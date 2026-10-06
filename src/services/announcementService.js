@@ -1,56 +1,29 @@
-import { supabase } from '../lib/supabase';
-import { DEMO_ANNOUNCEMENTS } from '../utils/demoData';
+/**
+ * announcementService.js — FastAPI backend edition.
+ */
+import { apiGet, apiPost } from '../lib/apiClient';
 
 export async function fetchAnnouncements(instituteId) {
-  if (!supabase) return DEMO_ANNOUNCEMENTS;
   try {
-    const response = await supabase
-      .from('announcements')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (response.error) throw response.error;
-    return response.data?.length ? response.data : DEMO_ANNOUNCEMENTS;
-  } catch (err) {
-    return DEMO_ANNOUNCEMENTS;
-  }
-}
-
-export async function fetchAnnouncementsByInstitute(instituteId) {
-  if (!supabase || !instituteId) return [];
-
-  try {
-    const { data, error } = await supabase
-      .from('announcements')
-      .select('*')
-      .eq('institute_id', instituteId)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
+    const data = await apiGet('/communication/announcements');
     return data || [];
   } catch (err) {
-    console.warn('fetchAnnouncementsByInstitute error:', err);
+    console.warn('fetchAnnouncements error:', err?.message);
     return [];
   }
 }
 
-export async function addAnnouncement(title, message, instituteId) {
-  const newAnn = {
-    id: 'ann_' + Date.now(),
+export async function fetchAnnouncementsByInstitute(instituteId) {
+  return fetchAnnouncements(instituteId);
+}
+
+export async function addAnnouncement(title, message, instituteId, options = {}) {
+  const payload = {
     title,
     message,
-    created_at: new Date().toISOString()
+    target_role: options.targetRole || 'all',
+    batch_id: options.batchId || null,
+    priority: options.priority || 'Normal',
   };
-  DEMO_ANNOUNCEMENTS.unshift(newAnn);
-  if (!supabase) return newAnn;
-  try {
-    const { data, error } = await supabase
-      .from('announcements')
-      .insert({ title, message, institute_id: instituteId })
-      .select()
-      .single();
-    if (error) throw error;
-    return data || newAnn;
-  } catch (err) {
-    return newAnn;
-  }
+  return apiPost('/communication/announcements', payload);
 }

@@ -1,8 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../lib/supabase';
+import { apiGet } from '../lib/apiClient';
 import { useAuthContext } from '../contexts/AuthContext';
-
-const client = () => { if (!supabase) throw new Error('Supabase is not configured.'); return supabase; };
 
 export function useMyStudentRecord() {
   const { user } = useAuthContext();
@@ -10,25 +8,25 @@ export function useMyStudentRecord() {
   return useQuery({
     queryKey: ['myStudentRecord', user?.id],
     queryFn: async () => {
-      if (!user?.id) throw new Error('User is not authenticated.');
-      const response = await client()
-        .from('students')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (response.error) throw response.error;
-      return response.data;
+      if (!user?.id) return null;
+      try {
+        const student = await apiGet('/students/me');
+        return student || null;
+      } catch {
+        return null;
+      }
     },
     enabled: !!user?.id,
   });
 }
 
 export async function fetchStudentByUserId(userId) {
-  const response = await client()
-    .from('students')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (response.error) throw response.error;
-  return response.data;
+  if (!userId) return null;
+  try {
+    const student = await apiGet('/students/me');
+    return student || null;
+  } catch {
+    return null;
+  }
 }
+

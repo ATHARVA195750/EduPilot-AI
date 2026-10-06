@@ -1,9 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../lib/supabase';
+import { apiGet } from '../lib/apiClient';
 import { useAuthContext } from '../contexts/AuthContext';
 import { useMyStudentRecord } from './useMyStudentRecord';
-
-const client = () => { if (!supabase) throw new Error('Supabase is not configured.'); return supabase; };
 
 export function useMyAttendance() {
   const { user } = useAuthContext();
@@ -12,16 +10,16 @@ export function useMyAttendance() {
   return useQuery({
     queryKey: ['myAttendance', user?.id, studentRecord?.id],
     queryFn: async () => {
-      if (!user?.id || !studentRecord?.id) return [];
-      const response = await client()
-        .from('attendance')
-        .select('*')
-        .eq('student_id', studentRecord.id)
-        .order('attendance_date', { ascending: false });
-      if (response.error) throw response.error;
-      return response.data || [];
+      if (!user?.id) return [];
+      try {
+        const records = await apiGet('/attendance');
+        return records || [];
+      } catch {
+        return [];
+      }
     },
-    enabled: !!user?.id && !!studentRecord?.id,
+    enabled: !!user?.id,
     placeholderData: [],
   });
 }
+

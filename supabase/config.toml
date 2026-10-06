@@ -1,0 +1,34 @@
+# Supabase CLI configuration for EduPilot.
+# Remote project ref: iunocsnmqptjxfsemhwf
+#
+# This file is intentionally minimal: it exists so that Edge Function behaviour
+# is version-controlled instead of relying on platform defaults. Local-dev
+# sections ([api], [db], [studio], ...) are deliberately NOT declared here; add
+# them only when `supabase start` is actually used.
+#
+# Note: config.toml contains NO secrets. Function secrets stay in the Edge
+# runtime (supabase secrets set ...).
+
+project_id = "edupilot"
+
+[functions.ai-insights]
+# Reject unauthenticated invocations at the platform edge, before the function
+# body runs. The function still independently re-validates the caller's JWT with
+# auth.getUser() and re-derives role/institute server-side, so this is defence in
+# depth rather than the only control.
+#
+# The existing client contract is unchanged: supabase.functions.invoke()
+# attaches the signed-in user's access token automatically.
+verify_jwt = true
+
+[functions.admin-provision-user]
+verify_jwt = true
+
+# Public institute onboarding. The caller is anonymous by definition, so the
+# platform-level JWT gate is off; nothing inside the function trusts the
+# request identity — it re-validates every field and derives role and
+# institute_id entirely server-side, with the service-role key staying in the
+# Edge runtime.
+[functions.register-institute]
+verify_jwt = false
+

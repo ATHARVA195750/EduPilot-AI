@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -27,6 +27,7 @@ import {
   XCircle,
   ToggleLeft,
   ToggleRight,
+  Trash2,
 } from 'lucide-react';
 
 export default function TeacherProfile() {
@@ -41,7 +42,7 @@ export default function TeacherProfile() {
     enabled: Boolean(id),
   });
 
-  const { assignments, loading: assignmentsLoading, addAssignment, changeStatus } = useTeacherAssignments(id);
+  const { assignments, loading: assignmentsLoading, addAssignment, changeStatus, removeAssignment } = useTeacherAssignments(id);
   const { batches } = useBatches();
   const { subjects: allSubjects } = useSubjects();
 
@@ -49,6 +50,27 @@ export default function TeacherProfile() {
   const [selectedBatchId, setSelectedBatchId] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Deep link from the Timetable planner ("Assign <faculty>"), which carries the
+  // batch/subject the owner had already chosen so the planner context is not
+  // lost. Pre-fills the existing assignment modal - it does not create anything.
+  const [searchParams] = useSearchParams();
+  const prefillBatch = searchParams.get('assignBatch') || '';
+  const prefillSubject = searchParams.get('assignSubject') || '';
+
+  useEffect(() => {
+    if (!prefillBatch && !prefillSubject) return;
+    // Wait until the batch/subject option lists have actually loaded. Applying
+    // the prefill earlier set the state before the <select> had matching
+    // <option>s, so the control displayed nothing and the submitted ids fell
+    // back to whatever option happened to be first.
+    const batchReady = !prefillBatch || batches.some((b) => String(b.id) === String(prefillBatch));
+    const subjectReady = !prefillSubject || allSubjects.some((s) => String(s.id) === String(prefillSubject));
+    if (assignmentsLoading || !batchReady || !subjectReady) return;
+    if (prefillBatch) setSelectedBatchId(prefillBatch);
+    if (prefillSubject) setSelectedSubjectId(prefillSubject);
+    setIsAssignModalOpen(true);
+  }, [prefillBatch, prefillSubject, assignmentsLoading, batches, allSubjects]);
 
   // Find selected batch to filter relevant subjects by course_id
   const selectedBatch = useMemo(() => {
@@ -87,14 +109,33 @@ export default function TeacherProfile() {
     }
   };
 
+  // teacher_assignments.status is stored lowercase ('active'/'inactive'); all UI
+  // comparisons must be case-insensitive or an active assignment rendered as if
+  // it were inactive and the toggle sent the wrong (rejected) value.
+  const isAssignmentActive = (status) => String(status || 'active').trim().toLowerCase() === 'active';
+
   const handleToggleAssignmentStatus = async (assignmentId, currentStatus) => {
-    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    const newStatus = isAssignmentActive(currentStatus) ? 'inactive' : 'active';
     try {
       await changeStatus(assignmentId, newStatus);
       await queryClient.invalidateQueries({ queryKey: ['teacher', id, instituteId] });
       toast(`Assignment updated to ${newStatus}.`);
     } catch (err) {
       toast(err.message || 'Failed to update assignment status.', 'error');
+    }
+  };
+
+  const handleRemoveAssignment = async (assignment) => {
+    const label = `${assignment.subjects?.name || 'Subject'} for ${assignment.batches?.name || 'batch'}`;
+    if (!window.confirm(`Remove the assignment "${label}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await removeAssignment(assignment.id);
+      await queryClient.invalidateQueries({ queryKey: ['teacher', id, instituteId] });
+      toast('Assignment removed successfully.');
+    } catch (err) {
+      toast(err.message || 'Failed to remove the assignment.', 'error');
     }
   };
 
@@ -236,12 +277,12 @@ export default function TeacherProfile() {
                     </span>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        a.status === 'Inactive'
-                          ? 'bg-rose-500/10 text-rose-500'
-                          : 'bg-emerald-500/10 text-emerald-500'
+                        isAssignmentActive(a.status)
+                          ? 'bg-emerald-500/10 text-emerald-500'
+                          : 'bg-rose-500/10 text-rose-500'
                       }`}
                     >
-                      {a.status || 'Active'}
+                      {isAssignmentActive(a.status) ? 'Active' : 'Inactive'}
                     </span>
                   </div>
 
@@ -264,20 +305,28 @@ export default function TeacherProfile() {
                   <span className="text-[10px] text-slate-400">
                     Created: {a.created_at ? new Date(a.created_at).toLocaleDateString() : 'N/A'}
                   </span>
-                  <button
-                    onClick={() => handleToggleAssignmentStatus(a.id, a.status)}
-                    className="flex items-center gap-1 font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
-                  >
-                    {a.status === 'Active' ? (
-                      <>
-                        <ToggleRight size={16} className="text-emerald-500" /> Deactivate
-                      </>
-                    ) : (
-                      <>
-                        <ToggleLeft size={16} className="text-slate-400" /> Reactivate
-                      </>
-                    )}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleToggleAssignmentStatus(a.id, a.status)}
+                      className="flex items-center gap-1 font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                    >
+                      {isAssignmentActive(a.status) ? (
+                        <>
+                          <ToggleRight size={16} className="text-emerald-500" /> Deactivate
+                        </>
+                      ) : (
+                        <>
+                          <ToggleLeft size={16} className="text-slate-400" /> Reactivate
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleRemoveAssignment(a)}
+                      className="flex items-center gap-1 font-semibold text-rose-500 hover:underline"
+                    >
+                      <Trash2 size={14} /> Remove
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

@@ -23,18 +23,18 @@ function ProtectedRoute({ children, role, allowedRoles }) {
   }
 
   if (profileError || !userRole) {
+    const isInactiveAccount = profileError?.toLowerCase().includes('inactive');
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4 text-slate-100">
-        <div className="max-w-md w-full bg-slate-900 rounded-2xl border border-slate-800 p-6 text-center space-y-4">
+        <div className="max-w-md w-full bg-slate-900 rounded-2xl border border-slate-800 p-6 text-center space-y-4 shadow-2xl">
           <div className="mx-auto w-12 h-12 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center text-xl font-bold">
             !
           </div>
-          <h2 className="text-xl font-semibold text-white">Account Configuration Error</h2>
+          <h2 className="text-xl font-semibold text-white">
+            {isInactiveAccount ? "Account Access Restricted" : "Account Configuration Error"}
+          </h2>
           <p className="text-slate-400 text-sm">
             {profileError || "Your user profile does not have a valid role assigned."}
-          </p>
-          <p className="text-slate-500 text-xs">
-            User ID: {profile?.id || "Unknown"}
           </p>
           <button
             onClick={() => signOut()}
@@ -46,6 +46,7 @@ function ProtectedRoute({ children, role, allowedRoles }) {
       </div>
     );
   }
+
 
   let permitted = [];
   if (Array.isArray(allowedRoles) && allowedRoles.length > 0) {

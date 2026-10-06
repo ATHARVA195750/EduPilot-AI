@@ -131,7 +131,7 @@ export default function TeacherDashboard() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => setIsHomeworkModalOpen(true)} className="bg-white text-indigo-700 hover:bg-indigo-50 font-semibold shadow-md">
+            <Button variant="light" onClick={() => setIsHomeworkModalOpen(true)}>
               <Plus size={16} className="mr-1.5" /> Assign Homework
             </Button>
             <Button onClick={() => setIsTestModalOpen(true)} className="bg-indigo-900/50 hover:bg-indigo-900/80 text-white border border-indigo-400/30">

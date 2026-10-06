@@ -22,7 +22,6 @@ import {
   Bell,
   BarChart3,
   FileSpreadsheet,
-  Bot,
   UserCircle,
   Settings as SettingsIcon,
 } from 'lucide-react';
@@ -48,13 +47,13 @@ const ownerLinks = [
   { to: '/communication', label: 'Communication', icon: MessageSquare },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/reports', label: 'Reports Hub', icon: FileSpreadsheet },
-  { to: '/ai', label: 'AI Copilot', icon: Bot },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
+  { to: '/admin-management', label: 'Admin Management', icon: UserPlus, ownerOnly: true },
 ];
 
 const teacherLinks = [
   { to: '/teacher', label: 'My Dashboard', icon: LayoutDashboard },
-  { to: '/batches', label: 'Assigned Batches', icon: Layers },
+  { to: '/teacher/batches', label: 'Assigned Batches', icon: Layers },
   { to: '/timetable', label: 'My Timetable', icon: Calendar },
   { to: '/attendance', label: 'Mark Attendance', icon: CheckCircle2 },
   { to: '/homework', label: 'Homework', icon: BookMarked },
@@ -62,7 +61,6 @@ const teacherLinks = [
   { to: '/tests', label: 'Tests & Exams', icon: FileText },
   { to: '/results', label: 'Student Results', icon: Award },
   { to: '/communication', label: 'Announcements', icon: MessageSquare },
-  { to: '/ai', label: 'AI Assistant', icon: Bot },
 ];
 
 const studentLinks = [
@@ -76,7 +74,6 @@ const studentLinks = [
   { to: '/fees', label: 'Fees & Payments', icon: DollarSign },
   { to: '/communication', label: 'Announcements', icon: MessageSquare },
   { to: '/notifications', label: 'Notifications', icon: Bell },
-  { to: '/ai', label: 'AI Student Tutor', icon: Bot },
   { to: '/profile', label: 'Profile / Settings', icon: UserCircle },
 ];
 
@@ -86,9 +83,11 @@ function Sidebar() {
   let activeLinks = ownerLinks;
   if (role === 'teacher') activeLinks = teacherLinks;
   if (role === 'student') activeLinks = studentLinks;
+  if (role === 'owner') activeLinks = ownerLinks;
+  if (role === 'admin') activeLinks = ownerLinks.filter((link) => !link.ownerOnly);
 
   return (
-    <aside className="w-72 border-r border-slate-200 bg-slate-50 text-slate-900 transition-colors duration-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 flex flex-col justify-between">
+    <aside className="w-full shrink-0 border-b border-slate-200 bg-slate-50 text-slate-900 transition-colors duration-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 md:w-72 md:border-b-0 md:border-r md:flex md:flex-col md:justify-between">
       <div>
         <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-200 dark:border-slate-800">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white font-bold text-lg shadow-md">

@@ -1,14 +1,12 @@
-import { supabase } from '../lib/supabase';
+/**
+ * subjectService.js — FastAPI backend edition.
+ */
+import { apiGet, apiPost, apiDelete } from '../lib/apiClient';
 
 export async function fetchSubjects(courseId) {
-  if (!supabase) return [];
   try {
-    let query = supabase.from('subjects').select('*').order('name', { ascending: true });
-    if (courseId) {
-      query = query.eq('course_id', courseId);
-    }
-    const { data, error } = await query;
-    if (error) throw error;
+    const params = courseId ? { course_id: courseId } : {};
+    const data = await apiGet('/academics/subjects', params);
     return data || [];
   } catch (err) {
     console.error('Error in fetchSubjects:', err);
@@ -17,22 +15,16 @@ export async function fetchSubjects(courseId) {
 }
 
 export async function createSubject(subjectData, instituteId) {
-  if (!supabase) throw new Error('Database client uninitialized');
   const payload = {
     course_id: subjectData.course_id,
     name: subjectData.name,
     code: subjectData.code || null,
     description: subjectData.description || null,
-    institute_id: instituteId || subjectData.institute_id || null,
   };
-
-  const { data, error } = await supabase.from('subjects').insert(payload).select().single();
-  if (error) throw error;
-  return data;
+  return apiPost('/academics/subjects', payload);
 }
 
 export async function deleteSubject(id) {
-  if (!supabase) throw new Error('Database client uninitialized');
-  const { error } = await supabase.from('subjects').delete().eq('id', id);
-  if (error) throw error;
+  return apiDelete(`/academics/subjects/${id}`);
 }
+

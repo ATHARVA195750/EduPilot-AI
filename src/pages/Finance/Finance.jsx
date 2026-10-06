@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useFinance } from '../../hooks/useFinance';
+import { useToast } from '../../components/common/Toast';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
@@ -11,7 +12,9 @@ import { TrendingUp, TrendingDown, DollarSign, PieChart, Plus } from 'lucide-rea
 
 export default function Finance() {
   const { expenses, summary, loading, recordExpense } = useFinance();
+  const { toast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -24,19 +27,28 @@ export default function Finance() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await recordExpense({
-      ...formData,
-      amount: Number(formData.amount)
-    });
-    setIsModalOpen(false);
-    setFormData({
-      title: '',
-      category: 'Rent',
-      amount: 5000,
-      payment_method: 'Bank Transfer',
-      description: '',
-      added_by: 'Admin User'
-    });
+    setIsSubmitting(true);
+    try {
+      await recordExpense({
+        ...formData,
+        amount: Number(formData.amount)
+      });
+      setIsModalOpen(false);
+      setFormData({
+        title: '',
+        category: 'Rent',
+        amount: 5000,
+        payment_method: 'Bank Transfer',
+        description: '',
+        added_by: 'Admin User'
+      });
+    } catch (err) {
+      // Without this the modal closed and the failure was invisible, so a
+      // rejected insert looked like a successful save.
+      toast(err?.message || 'Failed to record the expense.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (loading) return <Loader label="Computing institute P&L financial metrics..." />;
@@ -44,10 +56,16 @@ export default function Finance() {
   const columns = [
     {
       header: 'Expense Item',
+      // public.expenses has no `title` column - the item name lives in
+      // `description` (the form's "Expense Title" is folded into the category /
+      // description payload), so fall back to it instead of rendering a blank
+      // cell, and use the reference number as the secondary line.
       accessor: (row) => (
         <div>
-          <div className="font-semibold text-slate-900 dark:text-white">{row.title}</div>
-          <div className="text-xs text-slate-500">{row.description || 'Operating expense.'}</div>
+          <div className="font-semibold text-slate-900 dark:text-white">
+            {row.title || row.description || 'Unnamed expense'}
+          </div>
+          <div className="text-xs text-slate-500">{row.reference_number || 'Operating expense.'}</div>
         </div>
       ),
     },
@@ -61,6 +79,7 @@ export default function Finance() {
     },
     {
       header: 'Amount',
+      align: 'right',
       accessor: (row) => (
         <span className="font-bold text-rose-600 dark:text-rose-400">
           - ₹{Number(row.amount)?.toLocaleString()}
@@ -137,7 +156,41 @@ export default function Finance() {
         {expenses.length === 0 ? (
           <EmptyState title="No Expenses Logged" description="Operational expenses will appear here." />
         ) : (
-          <Table columns={columns} data={expenses} />
+          <Table>
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+              <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400">
+                <tr>
+                  {columns.map((col) => (
+                    <th
+                      key={col.header}
+                      className={`px-4 py-3 text-xs font-semibold uppercase tracking-wide ${
+                        col.align === 'right' ? 'text-right' : 'text-left'
+                      }`}
+                    >
+                      {col.header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200">
+                {expenses.map((row, index) => (
+                  <tr
+                    key={row.id || index}
+                    className="group hover:bg-slate-50 dark:hover:bg-slate-900/60 transition"
+                  >
+                    {columns.map((col) => (
+                      <td
+                        key={col.header}
+                        className={`px-4 py-4 text-xs align-middle ${col.align === 'right' ? 'text-right' : 'text-left'}`}
+                      >
+                        {col.accessor(row)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Table>
         )}
       </Card>
 
@@ -174,7 +227,9 @@ export default function Finance() {
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button type="submit">Save Expense</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Expense'}
+            </Button>
           </div>
         </form>
       </Modal>

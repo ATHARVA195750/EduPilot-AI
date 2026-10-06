@@ -220,12 +220,20 @@ export default function Payroll() {
                   const netSalary = Number(
                     row.net_salary ?? (Number(row.base_salary || 0) + Number(row.allowances || 0) - Number(row.deductions || 0))
                   );
+                  // GET /finance/payroll returns the raw record with `month_year`
+                  // ("2026-10"); freshly created records also carry numeric
+                  // month/year. Derive both so the Period is never blank.
+                  const [periodYearRaw, periodMonthRaw] = String(row.month_year || '-').split('-');
+                  const periodMonth = row.month != null && row.month !== '' ? Number(row.month) : Number(periodMonthRaw);
+                  const periodYear = row.year != null && row.year !== '' ? Number(row.year) : Number(periodYearRaw);
+                  const periodMonthLabel = MONTHS[periodMonth - 1] || (Number.isInteger(periodMonth) ? periodMonth : '—');
+                  const periodYearLabel = Number.isInteger(periodYear) ? periodYear : '—';
 
                   return (
                     <tr key={row.id} className="bg-white dark:bg-slate-900/40">
                       <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">{teacher?.full_name || 'Faculty Member'}</td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{MONTHS[Number(row.month) - 1] || row.month || '—'}</td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{row.year || '—'}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{periodMonthLabel}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{periodYearLabel}</td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-300">₹{Number(row.base_salary || 0).toLocaleString()}</td>
                       <td className="px-4 py-3 text-emerald-600 dark:text-emerald-400">+ ₹{Number(row.allowances || 0).toLocaleString()}</td>
                       <td className="px-4 py-3 text-rose-600 dark:text-rose-400">- ₹{Number(row.deductions || 0).toLocaleString()}</td>

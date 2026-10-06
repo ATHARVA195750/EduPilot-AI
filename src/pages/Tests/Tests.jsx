@@ -8,6 +8,7 @@ import Loader from '../../components/common/Loader';
 import EmptyState from '../../components/common/EmptyState';
 import { useTests } from '../../hooks/useTests';
 import { createTest, publishTest } from '../../services/testService';
+import { generateTopperAnnouncement } from '../../services/topperService';
 import { fetchTeacherAssignments } from '../../services/teacherAssignmentService';
 import { useBatches } from '../../hooks/useBatches';
 import { useSubjects } from '../../hooks/useSubjects';
@@ -18,6 +19,7 @@ import {
   Plus,
   AlertCircle,
   Calendar,
+  Trophy,
 } from 'lucide-react';
 
 export default function Tests() {
@@ -47,6 +49,11 @@ export default function Tests() {
 
   // Fetch teacher assignments if user is a teacher
   const isTeacher = role === 'teacher';
+  // Option B: topper announcements are owner/admin-only. The Publish button is
+  // hidden once a test is published, so a test published by a teacher would
+  // otherwise have no way to ever get its achievement announcement.
+  const canAnnounceTopper = role === 'owner' || role === 'admin';
+  const [announcingTestId, setAnnouncingTestId] = useState(null);
   const { data: teacherAssignments = [] } = useQuery({
     queryKey: ['myTeacherAssignments', teacherRecord?.id],
     queryFn: () => fetchTeacherAssignments(teacherRecord?.id),
@@ -146,12 +153,66 @@ export default function Tests() {
   const handlePublish = async () => {
     if (!publishingTestItem) return;
     try {
-      await publishTest(publishingTestItem.id, institute?.id);
+      const published = await publishTest(publishingTestItem.id, institute?.id);
       await queryClient.invalidateQueries({ queryKey: ['tests', institute?.id] });
-      toast('Test published successfully.');
       setPublishingTestItem(null);
+
+      // The topper announcement is generated as part of finalization. Report
+      // exactly what happened - never claim an announcement that was not made.
+      const topper = published?.topper;
+      if (topper?.status === 'announced') {
+        const who = (topper.toppers || []).join(' & ');
+        toast(
+          topper.tied
+            ? `Test published. 🏆 Joint toppers: ${who} (${topper.score}/${topper.maxMarks}).`
+            : `Test published. 🏆 Topper: ${who} (${topper.score}/${topper.maxMarks}, ${topper.percentage}%).`
+        );
+      } else if (topper?.status === 'requires_owner_publish') {
+        // Option B: the test is published, but the achievement announcement is
+        // owner/admin-only. Say so explicitly instead of implying success.
+        toast(`Test published. ${topper.reason}`, 'error');
+      } else if (topper?.status === 'error') {
+        toast(`Test published, but the topper announcement failed: ${topper.reason}`, 'error');
+      } else {
+        toast(`Test published successfully. ${topper?.reason || ''}`.trim());
+      }
     } catch (err) {
       toast(err.message || 'Failed to publish test assessment.', 'error');
+    }
+  };
+
+  /**
+   * Generate/refresh the topper announcement for an ALREADY-PUBLISHED test.
+   *
+   * This deliberately does NOT re-publish: `tests.test_date` and the results are
+   * left untouched, so finalization is not repeated. The service upserts on the
+   * unique (test_id, batch_id) key, so running this repeatedly - or after a
+   * result correction that changes the topper - updates the single existing
+   * announcement instead of creating duplicates.
+   */
+  const handleAnnounceTopper = async (testItem) => {
+    if (!testItem) return;
+    setAnnouncingTestId(testItem.id);
+    try {
+      const outcome = await generateTopperAnnouncement(testItem.id, institute?.id);
+      if (outcome.status === 'announced') {
+        const who = (outcome.toppers || []).join(' & ');
+        toast(
+          outcome.tied
+            ? `🏆 Joint toppers announced: ${who} (${outcome.score}/${outcome.maxMarks}).`
+            : `🏆 Topper announced: ${who} (${outcome.score}/${outcome.maxMarks}, ${outcome.percentage}%).`
+        );
+      } else if (outcome.status === 'requires_owner_publish') {
+        toast(outcome.reason, 'error');
+      } else {
+        toast(outcome.reason || 'No topper announcement was generated.', 'error');
+      }
+      // Refresh so the Communication/announcement views pick up the new row.
+      queryClient.invalidateQueries({ queryKey: ['tests', institute?.id] });
+    } catch (err) {
+      toast(err.message || 'Failed to generate the topper announcement.', 'error');
+    } finally {
+      setAnnouncingTestId(null);
     }
   };
 
@@ -243,6 +304,21 @@ export default function Tests() {
                       onClick={() => setPublishingTestItem(t)}
                     >
                       Publish
+                    </Button>
+                  )}
+                  {/* A test published by a teacher (Option B) is already final but
+                      has no topper announcement. Owner/Admin can generate or
+                      refresh it here without republishing. */}
+                  {isPublished && canAnnounceTopper && (
+                    <Button
+                      variant="secondary"
+                      className="py-1 px-3 text-xs"
+                      disabled={announcingTestId === t.id}
+                      title="Generate or refresh the topper achievement announcement for this published test"
+                      onClick={() => handleAnnounceTopper(t)}
+                    >
+                      <Trophy size={13} className="mr-1" />
+                      {announcingTestId === t.id ? 'Announcing...' : 'Announce Topper'}
                     </Button>
                   )}
                 </div>

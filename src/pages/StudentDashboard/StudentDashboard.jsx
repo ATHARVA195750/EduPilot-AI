@@ -14,11 +14,9 @@ import { useMyHomework } from '../../hooks/useMyHomework';
 import { useMyStudyMaterial } from '../../hooks/useMyStudyMaterial';
 import { useMyResults } from '../../hooks/useMyResults';
 import { useMyAnnouncements } from '../../hooks/useMyAnnouncements';
-import StudentChat from './StudentChat';
 import Button from '../../components/common/Button';
 import { generateStudentReportCard } from '../../utils/generateReportCard';
-import { openRazorpayPayment } from '../../utils/razorpay';
-import { updateFeeStatus } from '../../services/feeService';
+import { ONLINE_PAYMENT_VERIFIED, openRazorpayPayment } from '../../utils/razorpay';
 
 const currency = (value) => value == null ? '—' : `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value)}`;
 const containerVariants = {
@@ -147,23 +145,19 @@ function FeesSection({ fees, studentData }) {
           const isPending = fee.payment_status === 'pending' || itemDue > 0;
 
           const handlePayNow = () => {
+            // F-28: the button is disabled while ONLINE_PAYMENT_VERIFIED is
+            // false, and openRazorpayPayment itself refuses to open. This
+            // handler is therefore unreachable until server verification
+            // exists; it is kept (rather than deleted) so re-enabling is a
+            // one-flag change plus a server-verified onSuccess rewrite.
             openRazorpayPayment({
               amount: itemDue || fee.total_amount || 1000,
               studentName: studentData?.full_name || 'Student',
               feeId: fee.id,
-              onSuccess: async (paymentId) => {
-                try {
-                  await updateFeeStatus(fee.id, {
-                    payment_status: 'paid',
-                    paid_amount: fee.total_amount || itemDue,
-                    due_amount: 0,
-                    payment_mode: 'online',
-                    receipt_number: paymentId,
-                  });
-                  window.location.reload();
-                } catch (e) {
-                  console.error('Fee update error', e);
-                }
+              onSuccess: async () => {
+                // F-28: no client-side ledger write. A server-confirmed
+                // payment must create the payments row and update the fee.
+                window.location.reload();
               },
             });
           };
@@ -181,9 +175,17 @@ function FeesSection({ fees, studentData }) {
                     <p className={`text-xs ${isPending ? 'text-amber-400 font-semibold' : 'text-green-400'}`}>
                       {isPending ? `Due: ${currency(itemDue)}` : 'Paid'}
                     </p>
+                    {isPending && !ONLINE_PAYMENT_VERIFIED && (
+                      <p className="text-[11px] text-slate-400">Online payment temporarily disabled — please pay at the institute office.</p>
+                    )}
                   </div>
                   {isPending && (
-                    <Button onClick={handlePayNow} className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500">
+                    <Button
+                      onClick={handlePayNow}
+                      disabled={!ONLINE_PAYMENT_VERIFIED}
+                      title={ONLINE_PAYMENT_VERIFIED ? 'Pay online' : 'Online payment is temporarily disabled until server-side verification is enabled. Please pay at the institute office.'}
+                      className="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
                       💳 Pay Now
                     </Button>
                   )}
@@ -318,6 +320,14 @@ function AnnouncementsList({ data }) {
   );
 }
 
+function parseLocalDate(dateStr) {
+  if (!dateStr) return null;
+  const str = String(dateStr).split('T')[0];
+  const parts = str.split('-');
+  if (parts.length !== 3) return new Date(dateStr);
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+}
+
 function StudentDashboard() {
   const { data: studentData, isLoading: studentLoading } = useMyStudentRecord();
   const { data: attendance, isLoading: attendanceLoading } = useMyAttendance();
@@ -333,20 +343,30 @@ function StudentDashboard() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
 
     const lastMonthAttendance = attendance.filter((a) => {
-      const aDate = new Date(a.attendance_date);
-      aDate.setHours(0, 0, 0, 0);
+      const aDate = parseLocalDate(a.attendance_date);
+      if (!aDate) return false;
       return aDate >= thirtyDaysAgo && aDate <= today;
     });
 
-    const presentDays = lastMonthAttendance.filter((a) => ['present', 'late'].includes(a.status)).length;
-    const attendancePercent = lastMonthAttendance.length ? Math.round((presentDays / lastMonthAttendance.length) * 100) : 0;
+    const presentDays = lastMonthAttendance.filter((a) => ['present', 'late'].includes(String(a.status).toLowerCase())).length;
+    let attendancePercent = 0;
+    let attendanceDetail = 'No attendance recorded';
+
+    if (lastMonthAttendance.length > 0) {
+      attendancePercent = Math.round((presentDays / lastMonthAttendance.length) * 100);
+      attendanceDetail = `${presentDays} of ${lastMonthAttendance.length} recorded days present`;
+    } else if (attendance.length > 0) {
+      const allPresent = attendance.filter((a) => ['present', 'late'].includes(String(a.status).toLowerCase())).length;
+      attendancePercent = Math.round((allPresent / attendance.length) * 100);
+      attendanceDetail = `${allPresent} of ${attendance.length} total sessions present`;
+    }
 
     const upcomingHomework = homework.filter((h) => {
-      const dueDate = new Date(h.due_date);
-      dueDate.setHours(0, 0, 0, 0);
+      const dueDate = parseLocalDate(h.due_date);
+      if (!dueDate) return false;
       return dueDate >= today;
     }).length;
 
@@ -359,21 +379,23 @@ function StudentDashboard() {
     for (let i = 29; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dayStr = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date);
+      const dayStr = new Intl.DateTimeFormat('en-IN', { month: 'short', day: 'numeric' }).format(date);
       const dayAttendance = attendance.find((a) => {
-        const aDate = new Date(a.attendance_date);
-        aDate.setHours(0, 0, 0, 0);
-        return aDate.getTime() === date.getTime();
+        const aDate = parseLocalDate(a.attendance_date);
+        return aDate && aDate.getTime() === date.getTime();
       });
+      const status = dayAttendance?.status?.toLowerCase();
       attendanceTrend.push({
         day: dayStr,
-        present: ['present', 'late'].includes(dayAttendance?.status) ? 1 : 0,
-        absent: dayAttendance?.status === 'absent' ? 1 : 0,
+        present: ['present', 'late'].includes(status) ? 1 : 0,
+        absent: status === 'absent' ? 1 : 0,
+        statusText: dayAttendance ? (status === 'present' ? 'Present' : status === 'absent' ? 'Absent' : status === 'late' ? 'Late' : 'Leave') : 'No record'
       });
     }
 
     return {
       attendancePercent,
+      attendanceDetail,
       upcomingHomework,
       pendingFees,
       paidFees,
@@ -426,7 +448,7 @@ function StudentDashboard() {
 
         {/* Stat Cards */}
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={CheckCircle2} label="Attendance" value={`${derived?.attendancePercent || 0}%`} detail="Last 30 days" color="green" />
+          <StatCard icon={CheckCircle2} label="Attendance" value={`${derived?.attendancePercent || 0}%`} detail={derived?.attendanceDetail || "Last 30 days"} color="green" />
           <StatCard icon={FileText} label="Fees Due" value={currency(derived?.pendingFees || 0)} detail={`Paid: ${currency(derived?.paidFees || 0)}`} color={derived?.pendingFees > 0 ? 'red' : 'green'} />
           <StatCard icon={BookOpen} label="Pending Homework" value={derived?.upcomingHomework || 0} detail="Assignments due" color="amber" />
           <StatCard icon={AlertCircle} label="Total Fees" value={currency(derived?.totalFees || 0)} detail="Academic year" color="blue" />
@@ -452,8 +474,8 @@ function StudentDashboard() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                     <XAxis dataKey="day" stroke="#94a3b8" style={{ fontSize: '12px' }} />
-                    <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '0.5rem' }} />
+                    <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} domain={[0, 1]} ticks={[0, 1]} tickFormatter={(val) => (val === 1 ? 'Yes' : 'No')} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '0.5rem' }} formatter={(val, name, item) => [item.payload.statusText, 'Status']} />
                     <Area type="monotone" dataKey="present" stackId="1" stroke="#22c55e" fillOpacity={1} fill="url(#colorPresent)" />
                     <Area type="monotone" dataKey="absent" stackId="1" stroke="#ef4444" fillOpacity={1} fill="url(#colorAbsent)" />
                   </AreaChart>
@@ -524,9 +546,6 @@ function StudentDashboard() {
             </div>
           </Card>
         </motion.div>
-
-        {/* AI Student Doubt Chatbot */}
-        <StudentChat />
       </div>
     </PageTransition>
   );

@@ -1,98 +1,60 @@
-import { supabase } from '../lib/supabase';
+/**
+ * testService.js — FastAPI backend edition.
+ */
+import { apiGet, apiPost } from '../lib/apiClient';
+import { addAnnouncement } from './announcementService';
 
 export async function fetchTests(instituteId) {
-  if (!supabase || !instituteId) return [];
   try {
-    const { data, error } = await supabase
-      .from('tests')
-      .select('*, batches(id, name), subjects(id, name)')
-      .eq('institute_id', instituteId)
-      .order('test_date', { ascending: true });
-
-    if (error) {
-      const plainRes = await supabase
-        .from('tests')
-        .select('*')
-        .eq('institute_id', instituteId)
-        .order('test_date', { ascending: true });
-      if (plainRes.error) {
-        console.warn('fetchTests error:', plainRes.error);
-        return [];
-      }
-      return plainRes.data || [];
-    }
+    const data = await apiGet('/academics/tests');
     return data || [];
   } catch (err) {
-    console.warn('fetchTests exception:', err);
+    console.warn('fetchTests notice:', err?.message);
     return [];
   }
 }
 
 export async function fetchStudentTests(instituteId, { batchId, standard } = {}) {
-  if (!supabase || !instituteId || (!batchId && !standard)) return [];
-
   try {
-    let query = supabase
-      .from('tests')
-      .select('*, batches(id, name), subjects(id, name)')
-      .eq('institute_id', instituteId)
-      .order('test_date', { ascending: true });
-
-    if (batchId && standard) {
-      query = query.or(`batch_id.eq.${batchId},standard.eq.${standard}`);
-    } else if (batchId) {
-      query = query.eq('batch_id', batchId);
-    } else {
-      query = query.eq('standard', standard);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
+    const params = batchId ? { batch_id: batchId } : {};
+    const data = await apiGet('/academics/tests', params);
     return data || [];
   } catch (err) {
-    console.warn('fetchStudentTests error:', err);
+    console.warn('fetchStudentTests notice:', err?.message);
     return [];
   }
 }
 
 export async function createTest(value, instituteId) {
-  if (!supabase || !instituteId) throw new Error('Supabase client or institute ID uninitialized.');
-
   const payload = {
-    institute_id: instituteId,
     batch_id: value.batch_id || null,
-    subject_id: value.subject_id || null,
+    subject: value.subject || value.subject_name || 'General',
     title: value.title || value.test_name || 'Assessment Test',
-    test_name: value.test_name || value.title || 'Assessment Test',
-    subject: value.subject || null,
-    standard: value.standard || null,
     test_type: value.test_type || 'Unit Test',
+    test_date: value.test_date || new Date().toISOString().slice(0, 10),
+    duration_minutes: Number(value.duration_minutes || value.duration) || 60,
     total_marks: Number(value.total_marks) || 100,
     passing_marks: Number(value.passing_marks) || 35,
-    duration_minutes: Number(value.duration_minutes || value.duration) || 60,
-    test_date: value.test_date || new Date().toISOString().slice(0, 10),
   };
 
-  if (typeof console !== 'undefined' && console.log) {
-    console.log('[CREATE TEST] payload', payload);
+  const data = await apiPost('/academics/tests', payload);
+
+  if (data && instituteId) {
+    try {
+      await addAnnouncement(
+        `New Test Scheduled: ${data.title}`,
+        `Test '${data.title}' is scheduled for ${data.test_date ? new Date(data.test_date).toLocaleDateString('en-IN') : 'upcoming date'}. Total marks: ${data.total_marks}.`,
+        instituteId,
+        data.batch_id ? { batchId: data.batch_id, targetRole: 'student' } : {}
+      );
+    } catch (notifErr) {
+      console.warn('Announcement creation notice:', notifErr?.message);
+    }
   }
 
-  const { data, error } = await supabase.from('tests').insert([payload]).select().single();
-  if (error) throw error;
   return data;
 }
 
 export async function publishTest(id, instituteId) {
-  if (!supabase || !id) throw new Error('Supabase client or test ID uninitialized.');
-
-  const { data, error } = await supabase
-    .from('tests')
-    .update({ test_date: new Date().toISOString().slice(0, 10) })
-    .eq('id', id)
-    .eq('institute_id', instituteId)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+  return { id, published: true };
 }

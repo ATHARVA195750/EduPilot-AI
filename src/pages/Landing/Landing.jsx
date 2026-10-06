@@ -1,15 +1,39 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { GraduationCap, BookOpen, Users, Trophy, CheckCircle2, Phone, Mail, MapPin, Send, Sparkles, ArrowRight, ShieldCheck, Clock, Award } from 'lucide-react';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import { useToast } from '../../components/common/Toast';
-import { supabase } from '../../lib/supabase';
+import { fetchPublicInstitute, submitPublicEnquiry } from '../../services/publicEnquiryService';
 
 export default function Landing() {
   const { toast } = useToast();
   const [form, setForm] = useState({ name: '', phone: '', message: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [institute, setInstitute] = useState(null);
+  const [instituteError, setInstituteError] = useState(null);
+  const [instituteLoading, setInstituteLoading] = useState(true);
+
+  // Resolve the public institute for this landing page as an unauthenticated
+  // visitor. This must NOT read public.institutes directly: RLS only grants
+  // SELECT to the `authenticated` role, so an anon query returns 0 rows and the
+  // page wrongly reported "No institute is configured to receive enquiries".
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const resolved = await fetchPublicInstitute();
+        if (active) setInstitute(resolved);
+      } catch (err) {
+        if (active) setInstituteError(err.message || 'Unable to load institute details.');
+      } finally {
+        if (active) setInstituteLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmitInquiry = async (e) => {
     e.preventDefault();
@@ -17,22 +41,28 @@ export default function Landing() {
       toast('Please enter your name and phone number.', 'error');
       return;
     }
+    if (instituteLoading) {
+      toast('Please wait while the institute details finish loading.', 'error');
+      return;
+    }
+    if (instituteError) {
+      toast(instituteError, 'error');
+      return;
+    }
+    if (!institute) {
+      toast('No institute is configured to receive enquiries. Please contact the administrator.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
-      if (!supabase) throw new Error('Inquiry service is unavailable.');
-      const { data: institutes, error: instituteError } = await supabase.from('institutes').select('id').limit(2);
-      if (instituteError) throw instituteError;
-      if (!institutes || institutes.length !== 1) throw new Error('A public institute destination is not configured.');
-
-      const { error } = await supabase.from('enquiries').insert({
-        institute_id: institutes[0].id,
-        student_name: form.name.trim(),
+      // Written through the SECURITY DEFINER RPC so the anon role never needs
+      // INSERT on public.enquiries, and the institute is resolved server-side
+      // (a visitor can never target another tenant's institute_id).
+      await submitPublicEnquiry({
+        name: form.name.trim(),
         phone: form.phone.trim(),
-        counselling_notes: form.message.trim() || null,
-        source: 'Website',
-        status: 'new',
+        message: form.message,
       });
-      if (error) throw error;
       toast('Thank you! Your inquiry has been submitted successfully.');
       setForm({ name: '', phone: '', message: '' });
     } catch (err) {
@@ -52,10 +82,12 @@ export default function Landing() {
               <GraduationCap className="h-6 w-6" />
             </div>
             <div>
-              <span className="text-xl font-bold tracking-tight text-white">EduPilot AI</span>
-              <span className="ml-2 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-semibold text-blue-400 border border-blue-500/20">
-                Academy
-              </span>
+              <span className="text-xl font-bold tracking-tight text-white">{institute?.name || 'EduPilot AI'}</span>
+              {!institute && (
+                <span className="ml-2 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-semibold text-blue-400 border border-blue-500/20">
+                  Academy
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -91,7 +123,7 @@ export default function Landing() {
             Next-Generation Coaching & <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">Interactive Learning</span>
           </h1>
           <p className="mx-auto max-w-2xl text-lg text-slate-400 leading-relaxed">
-            Welcome to EduPilot AI Institute. Providing top-tier coaching, personalized AI academic doubt solving, automated parent updates, and comprehensive test analytics.
+            Welcome to {institute?.name || 'EduPilot AI Institute'}. Providing top-tier coaching, personalized AI academic doubt solving, automated parent updates, and comprehensive test analytics.
           </p>
           <div className="flex flex-wrap justify-center gap-4 pt-4">
             <a
@@ -239,20 +271,28 @@ export default function Landing() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <GraduationCap className="h-6 w-6 text-blue-400" />
-              <span className="text-lg font-bold text-white">EduPilot AI Academy</span>
+              <span className="text-lg font-bold text-white">{institute?.name || 'EduPilot AI Academy'}</span>
             </div>
             <p className="text-xs leading-relaxed text-slate-500">
               Leading coaching institute providing high quality education, digital learning resources, and complete student performance tracking.
             </p>
           </div>
-          <div>
-            <h4 className="font-semibold text-white mb-3">Contact Information</h4>
-            <ul className="space-y-2 text-xs">
-              <li className="flex items-center gap-2"><Phone className="h-4 w-4 text-blue-400" /> +91 98765 43210</li>
-              <li className="flex items-center gap-2"><Mail className="h-4 w-4 text-blue-400" /> contact@edupilot.ai</li>
-              <li className="flex items-center gap-2"><MapPin className="h-4 w-4 text-blue-400" /> Main Education Hub, City Center</li>
-            </ul>
-          </div>
+          {(institute?.phone || institute?.email || institute?.address) && (
+            <div>
+              <h4 className="font-semibold text-white mb-3">Contact Information</h4>
+              <ul className="space-y-2 text-xs">
+                {institute?.phone && (
+                  <li className="flex items-center gap-2"><Phone className="h-4 w-4 text-blue-400" /> {institute.phone}</li>
+                )}
+                {institute?.email && (
+                  <li className="flex items-center gap-2"><Mail className="h-4 w-4 text-blue-400" /> {institute.email}</li>
+                )}
+                {institute?.address && (
+                  <li className="flex items-center gap-2"><MapPin className="h-4 w-4 text-blue-400" /> {institute.address}</li>
+                )}
+              </ul>
+            </div>
+          )}
           <div>
             <h4 className="font-semibold text-white mb-3">Quick Links</h4>
             <div className="flex flex-col gap-2 text-xs">

@@ -1,148 +1,136 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { supabase } from '../lib/supabase';
+/**
+ * AuthContext — FastAPI backend edition.
+ *
+ * Replaces Supabase Auth. Token is stored in sessionStorage via tokenStore
+ * (cleared when the tab closes; never exposed in logs or console).
+ */
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { apiPost, tokenStore } from '../lib/apiClient';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(null);           // profile object from /auth/me
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
+  const [authGeneration, setAuthGeneration] = useState(0);
+  const authGenerationRef = useRef(0);
+  const activeUserIdRef = useRef(null);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadSession() {
-      if (!supabase) {
-        if (isMounted) {
-          setAuthError('Supabase client is not configured.');
-          setLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-
-        if (isMounted) {
-          setSession(data.session);
-          setUser(data.session?.user ?? null);
-          setAuthError(null);
-        }
-      } catch (error) {
-        console.error('Supabase session load error:', error.message);
-        if (isMounted) {
-          setAuthError(error.message);
-          setUser(null);
-          setSession(null);
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+  const bumpGeneration = useCallback((nextUserId) => {
+    if (activeUserIdRef.current !== nextUserId) {
+      activeUserIdRef.current = nextUserId;
+      authGenerationRef.current += 1;
+      setAuthGeneration(authGenerationRef.current);
     }
-
-    loadSession();
-
-    if (!supabase) {
-      return () => { isMounted = false; };
-    }
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (isMounted) {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        setAuthError(null);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      listener?.subscription?.unsubscribe();
-    };
   }, []);
 
-  const login = async ({ email, password }) => {
-    setAuthError(null);
-    if (!supabase) {
-      const err = new Error('Supabase configuration missing.');
-      setAuthError(err.message);
-      return { data: null, error: err };
+  /** Restore user from existing token on mount */
+  useEffect(() => {
+    const token = tokenStore.get();
+    if (!token) {
+      setLoading(false);
+      return;
     }
 
-    try {
-      const res = await supabase.auth.signInWithPassword({ email, password });
-      if (res.error) {
-        setAuthError(res.error.message);
-      } else {
-        setSession(res.data.session);
-        setUser(res.data.user);
-      }
-      return res;
-    } catch (err) {
-      setAuthError(err.message || 'Login failed due to a network error.');
-      return { data: null, error: err };
-    }
-  };
-
-  const register = async ({ email, password }) => {
-    setAuthError(null);
-    if (!supabase) {
-      const err = new Error('Supabase configuration missing.');
-      setAuthError(err.message);
-      return { data: null, error: err };
-    }
-
-    try {
-      const res = await supabase.auth.signUp({ email, password });
-      if (res.error) {
-        setAuthError(res.error.message);
-      } else {
-        setSession(res.data.session);
-        setUser(res.data.user);
-      }
-      return res;
-    } catch (err) {
-      setAuthError(err.message || 'Registration failed due to a network error.');
-      return { data: null, error: err };
-    }
-  };
-
-  const logout = async () => {
-    setUser(null);
-    setSession(null);
-    setAuthError(null);
-    if (supabase) {
+    let cancelled = false;
+    (async () => {
       try {
-        await supabase.auth.signOut();
-      } catch (e) {
-        console.warn('SignOut error:', e.message);
+        const { apiGet } = await import('../lib/apiClient');
+        const profile = await apiGet('/auth/me');
+        if (!cancelled) {
+          setUser(profile);
+          bumpGeneration(profile.id);
+        }
+      } catch {
+        // Token invalid / expired — clear it silently
+        tokenStore.clear();
+        if (!cancelled) setUser(null);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
-  };
+    })();
 
-  const value = useMemo(
-    () => ({
-      user,
-      session,
-      loading,
-      authError,
-      login,
-      register,
-      logout,
-      signOut: logout,
-      isAuthenticated: Boolean(user),
-    }),
-    [user, session, loading, authError]
-  );
+    return () => { cancelled = true; };
+  }, []);
+
+  /** Handle 401 broadcasts from the API client */
+  useEffect(() => {
+    const onUnauthorized = () => {
+      tokenStore.clear();
+      setUser(null);
+      bumpGeneration(null);
+    };
+    window.addEventListener('edupilot:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('edupilot:unauthorized', onUnauthorized);
+  }, [bumpGeneration]);
+
+  /**
+   * Unified login supporting Admin (email), Teacher (TCH-XX-XXXX), Student (STU-XX-XXXX).
+   * roleType: 'admin' | 'teacher' | 'student'
+   */
+  const login = useCallback(async ({ identifier, password, roleType = 'admin' }) => {
+    setAuthError(null);
+    try {
+      const data = await apiPost('/auth/login', { identifier, password, roleType }, false);
+      tokenStore.set(data.access_token);
+      const profile = data.user;
+      setUser(profile);
+      bumpGeneration(profile.id);
+      return { data, error: null };
+    } catch (err) {
+      const msg = err.message || 'Login failed. Please check your credentials.';
+      setAuthError(msg);
+      return { data: null, error: new Error(msg) };
+    }
+  }, [bumpGeneration]);
+
+  const logout = useCallback(async () => {
+    tokenStore.clear();
+    setUser(null);
+    setAuthError(null);
+    bumpGeneration(null);
+    // Best-effort signout to backend (invalidate any server-side session)
+    try {
+      await apiPost('/auth/logout', {});
+    } catch {
+      // ignore — token already cleared locally
+    }
+    return { data: null, error: null };
+  }, [bumpGeneration]);
+
+  const value = useMemo(() => ({
+    user,
+    session: user ? { user } : null,       // Compat shim: legacy code checks session?.user
+    authGeneration,
+    loading,
+    authError,
+    login,
+    logout,
+    signOut: logout,
+    isAuthenticated: Boolean(user),
+    // Legacy compat: register via FastAPI register-admin
+    register: async ({ email, password, ...rest }) => {
+      setAuthError(null);
+      try {
+        const data = await apiPost('/auth/register-admin', { email, password, ...rest }, false);
+        tokenStore.set(data.access_token);
+        setUser(data.user);
+        bumpGeneration(data.user.id);
+        return { data, error: null };
+      } catch (err) {
+        const msg = err.message || 'Registration failed.';
+        setAuthError(msg);
+        return { data: null, error: new Error(msg) };
+      }
+    },
+  }), [user, authGeneration, loading, authError, login, logout, bumpGeneration]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuthContext() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuthContext must be used within AuthProvider');
-  }
+  if (!context) throw new Error('useAuthContext must be used within AuthProvider');
   return context;
 }

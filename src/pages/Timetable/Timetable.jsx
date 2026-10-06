@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTimetable } from '../../hooks/useTimetable';
 import { useBatches } from '../../hooks/useBatches';
 import { useTeachers } from '../../hooks/useTeachers';
 import { useSubjects } from '../../hooks/useSubjects';
 import { useBranches } from '../../hooks/useBranches';
 import { useInstitute } from '../../contexts/InstituteContext';
+import { useTeacherAssignments } from '../../hooks/useTeacherAssignments';
 import { useToast } from '../../components/common/Toast';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -24,11 +26,40 @@ import {
   Building,
   BookOpen,
   UserCheck,
-  FileText
+  FileText,
+  CheckCircle2,
+  ShieldAlert,
+  ArrowRight
 } from 'lucide-react';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const STATUS_OPTIONS = ['scheduled', 'ongoing', 'completed', 'cancelled'];
+
+/**
+ * Map an ISO 'YYYY-MM-DD' date onto the next occurrence of `dayName`, so the
+ * Day-of-Week tab and the Date field stay consistent. The weekday is not stored
+ * (public.class_sessions has no day_of_week column) - it is derived from the
+ * date, so the two controls must agree.
+ */
+const dateForDay = (dayName) => {
+  const targetIndex = DAYS.indexOf(dayName);
+  if (targetIndex === -1) return new Date().toISOString().slice(0, 10);
+  const base = new Date();
+  const currentIndex = (base.getDay() + 6) % 7;
+  const delta = (targetIndex - currentIndex + 7) % 7;
+  base.setDate(base.getDate() + delta);
+  return base.toISOString().slice(0, 10);
+};
+
+const dayForDate = (dateStr) => {
+  if (!dateStr) return DAYS[0];
+  const parsed = new Date(`${String(dateStr).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return DAYS[0];
+  const idx = (parsed.getDay() + 6) % 7;
+  // Sunday (idx 6) is not part of the Mon-Sat planner; keep the previous day
+  // rather than rendering an undefined tab.
+  return DAYS[idx] || DAYS[0];
+};
 
 const INITIAL_FORM_DATA = {
   id: null,
@@ -76,6 +107,68 @@ export default function Timetable() {
 
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
+  /**
+   * Assignment awareness (UX only - the authoritative check remains
+   * timetableService.validateTeacherAssignment on submit, unchanged).
+   *
+   * teacher_assignments rows are read through the existing
+   * useTeacherAssignments hook (RLS-scoped) purely to label the faculty
+   * dropdown and explain *why* a teacher is unavailable. Nothing is ever
+   * auto-created here.
+   */
+  const { assignments: teacherAssignments, refresh: refreshAssignments } = useTeacherAssignments();
+
+  const isActiveAssignment = (status) => String(status || '').trim().toLowerCase() === 'active';
+
+  // Teacher ids actively assigned to the currently selected batch + subject.
+  const assignedTeacherIds = useMemo(() => {
+    const ids = new Set();
+    if (!formData.batch_id || !formData.subject_id) return ids;
+    teacherAssignments.forEach((a) => {
+      const matchesBatch = String(a.batch_id) === String(formData.batch_id);
+      const matchesSubject = String(a.subject_id) === String(formData.subject_id);
+      if (matchesBatch && matchesSubject && isActiveAssignment(a.status)) {
+        ids.add(String(a.teacher_id));
+      }
+    });
+    return ids;
+  }, [teacherAssignments, formData.batch_id, formData.subject_id]);
+
+  const teacherOptions = useMemo(
+    () =>
+      teachers.map((t) => ({
+        ...t,
+        isAssigned:
+          formData.batch_id && formData.subject_id
+            ? assignedTeacherIds.has(String(t.id))
+            : false,
+      })),
+    [teachers, assignedTeacherIds, formData.batch_id, formData.subject_id]
+  );
+
+  const eligibleTeachers = useMemo(
+    () => teacherOptions.filter((t) => t.isAssigned),
+    [teacherOptions]
+  );
+
+  const selectedTeacher = useMemo(
+    () => teacherOptions.find((t) => String(t.id) === String(formData.teacher_id)) || null,
+    [teacherOptions, formData.teacher_id]
+  );
+
+  // Only surface eligibility once a batch AND subject are chosen - it is
+  // meaningless before then.
+  const assignmentContextReady = Boolean(formData.batch_id && formData.subject_id);
+  const selectedTeacherUnassigned =
+    assignmentContextReady && Boolean(selectedTeacher) && !selectedTeacher.isAssigned;
+  const noEligibleTeacher = assignmentContextReady && eligibleTeachers.length === 0;
+
+  // Refresh on open so an assignment created in Teacher Assignments is
+  // reflected when the user returns to the planner.
+  useEffect(() => {
+    if (isModalOpen) refreshAssignments();
+  }, [isModalOpen, refreshAssignments]);
+
   const handleOpenAddModal = () => {
     setIsEditing(false);
     setConflictError(null);
@@ -88,15 +181,16 @@ export default function Timetable() {
     setFormData({
       ...INITIAL_FORM_DATA,
       day_of_week: selectedDay,
+      session_date: dateForDay(selectedDay),
       branch_id: firstBranch?.id || '',
       branch_name: firstBranch?.name || 'Main Campus',
       batch_id: firstBatch?.id || '',
-      batch_name: firstBatch?.name || 'Class 10th - Batch A',
+      batch_name: firstBatch?.name || '',
       subject_id: firstSubject?.id || '',
-      subject: firstSubject?.name || 'Physics',
+      subject: firstSubject?.name || '',
       teacher_id: firstTeacher?.id || '',
-      teacher_name: firstTeacher?.full_name || firstTeacher?.name || 'Dr. Rajesh Kumar',
-      room_number: firstBatch?.room_number || 'Room 101'
+      teacher_name: firstTeacher?.full_name || firstTeacher?.name || '',
+      room_number: firstBatch?.room_number || ''
     });
     setIsModalOpen(true);
   };
@@ -116,9 +210,11 @@ export default function Timetable() {
       subject: session.subject || '',
       teacher_id: session.teacher_id || '',
       teacher_name: session.teacher_name || '',
-      room_number: session.room_number || 'Room 101',
-      day_of_week: session.day_of_week || selectedDay,
+      room_number: session.room_number || '',
+      // session_date is authoritative (the stored weekday is derived from it),
+      // so derive the tab from the date rather than trusting a stale value.
       session_date: session.session_date || new Date().toISOString().slice(0, 10),
+      day_of_week: dayForDate(session.session_date) || selectedDay,
       start_time: session.start_time || '18:00',
       end_time: session.end_time || '19:30',
       topic: session.topic || '',
@@ -126,6 +222,26 @@ export default function Timetable() {
       notes: session.notes || ''
     });
     setIsModalOpen(true);
+  };
+
+  const navigate = useNavigate();
+
+  /**
+   * Send the user to the existing Teacher Assignment management screen
+   * (TeacherProfile, /teachers/:id) for the selected faculty. The chosen batch
+   * and subject travel along in the query string so the assignment modal opens
+   * pre-filled and the planner context is not lost. No assignment is created
+   * automatically - the user still confirms on that screen.
+   */
+  const goToTeacherAssignments = (teacherId) => {
+    if (!teacherId) {
+      navigate('/teachers');
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('assignBatch', formData.batch_id || '');
+    params.set('assignSubject', formData.subject_id || '');
+    navigate(`/teachers/${teacherId}?${params.toString()}`);
   };
 
   const handleScheduleSubmit = async (e) => {
@@ -263,7 +379,7 @@ export default function Timetable() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                      {item.room_number || 'Room 101'}
+                      {item.room_number || '—'}
                     </span>
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${
@@ -404,9 +520,13 @@ export default function Timetable() {
                 }}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               >
-                {(batches.length ? batches : [{ id: 'b1', name: 'Class 10th - Batch A' }, { id: 'b2', name: 'Class 12th - Batch B' }]).map(b => (
-                  <option key={b.id || b.name} value={b.id}>{b.name}</option>
-                ))}
+                {batches.length === 0 ? (
+                  <option value="" disabled>No batches available</option>
+                ) : (
+                  batches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))
+                )}
               </select>
             </div>
           </div>
@@ -426,10 +546,22 @@ export default function Timetable() {
                 }}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               >
-                {(teachers.length ? teachers : [{ id: 't1', name: 'Dr. Rajesh Kumar' }, { id: 't2', name: 'Sunita Gupta' }]).map(t => (
-                  <option key={t.id || t.name} value={t.id}>{t.full_name || t.name}</option>
-                ))}
+                {teachers.length === 0 ? (
+                  <option value="" disabled>No faculty available</option>
+                ) : (
+                  teacherOptions.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.full_name || t.name}
+                      {assignmentContextReady ? (t.isAssigned ? '  ✓ Assigned' : '  — Not assigned') : ''}
+                    </option>
+                  ))
+                )}
               </select>
+              {assignmentContextReady && (
+                <p className="mt-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  {eligibleTeachers.length} of {teachers.length} faculty assigned to this batch &amp; subject.
+                </p>
+              )}
             </div>
 
             <div>
@@ -446,19 +578,90 @@ export default function Timetable() {
                 }}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               >
-                {(subjects.length ? subjects : [{ id: 'sub_1', name: 'Physics' }, { id: 'sub_2', name: 'Mathematics' }, { id: 'sub_3', name: 'Chemistry' }]).map(sub => (
-                  <option key={sub.id || sub.name} value={sub.id}>{sub.name}</option>
-                ))}
+                {subjects.length === 0 ? (
+                  <option value="" disabled>No subjects available</option>
+                ) : (
+                  subjects.map(sub => (
+                    <option key={sub.id} value={sub.id}>{sub.name}</option>
+                  ))
+                )}
               </select>
             </div>
           </div>
+
+          {/* Assignment guidance: explains WHY a teacher cannot be scheduled and
+              routes to the existing Teacher Assignment screen. The authoritative
+              check still runs on submit; this block is purely explanatory. */}
+          {assignmentContextReady && (selectedTeacherUnassigned || noEligibleTeacher) && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs dark:border-amber-900/60 dark:bg-amber-950/30">
+              <div className="flex items-start gap-2">
+                <ShieldAlert size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="flex-1 space-y-2">
+                  {noEligibleTeacher ? (
+                    <p className="font-semibold text-amber-900 dark:text-amber-200">
+                      No faculty are assigned to {formData.batch_name || 'this batch'} for{' '}
+                      {formData.subject || 'this subject'} yet.
+                    </p>
+                  ) : (
+                    <p className="font-semibold text-amber-900 dark:text-amber-200">
+                      {selectedTeacher?.full_name || selectedTeacher?.name || 'This faculty member'} is not
+                      assigned to teach {formData.batch_name || 'this batch'}
+                      {formData.subject ? ` for ${formData.subject}` : ''}.
+                    </p>
+                  )}
+                  <p className="text-amber-800 dark:text-amber-300/90">
+                    Classes can only be scheduled for faculty holding an <strong>active</strong> teacher
+                    assignment for this exact batch and subject. The timetable enforces this, so the slot
+                    cannot be saved until that assignment exists.
+                  </p>
+                  {eligibleTeachers.length > 0 && (
+                    <p className="text-amber-800 dark:text-amber-300/90">
+                      Already assigned:{' '}
+                      <strong>{eligibleTeachers.map((t) => t.full_name || t.name).join(', ')}</strong>.
+                    </p>
+                  )}
+                  {canManage && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => goToTeacherAssignments(formData.teacher_id)}
+                      >
+                        <UserCheck size={14} className="mr-1.5" />
+                        {selectedTeacher
+                          ? `Assign ${selectedTeacher.full_name || selectedTeacher.name}`
+                          : 'Manage Teacher Assignments'}
+                        <ArrowRight size={14} className="ml-1.5" />
+                      </Button>
+                      <span className="text-[11px] text-amber-800/80 dark:text-amber-300/70">
+                        Opens Teacher Assignments with this batch &amp; subject pre-selected.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {assignmentContextReady && !selectedTeacherUnassigned && !noEligibleTeacher && selectedTeacher?.isAssigned && (
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+              <CheckCircle2 size={16} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+              {selectedTeacher.full_name || selectedTeacher.name} is assigned to this batch and subject.
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Day of Week</label>
               <select
                 value={formData.day_of_week}
-                onChange={(e) => setFormData({ ...formData, day_of_week: e.target.value })}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  day_of_week: e.target.value,
+                  // The weekday is derived from session_date on save, so move the
+                  // date to the matching occurrence to keep both controls honest.
+                  session_date: dateForDay(e.target.value)
+                })}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               >
                 {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
@@ -491,7 +694,12 @@ export default function Timetable() {
               label="Date"
               type="date"
               value={formData.session_date}
-              onChange={(e) => setFormData({ ...formData, session_date: e.target.value })}
+              onChange={(e) => setFormData({
+                ...formData,
+                session_date: e.target.value,
+                // Keep the day tab in sync with the authoritative date field.
+                day_of_week: dayForDate(e.target.value)
+              })}
             />
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Status</label>

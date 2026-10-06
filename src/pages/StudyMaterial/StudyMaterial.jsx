@@ -16,7 +16,7 @@ import { useBatches } from '../../hooks/useBatches';
 import { useSubjects } from '../../hooks/useSubjects';
 import { useInstitute } from '../../contexts/InstituteContext';
 import { useToast } from '../../components/common/Toast';
-import { supabase } from '../../lib/supabase';
+import { uploadStudyMaterialFile } from '../../services/studyMaterialService';
 import {
   FileText,
   Video,
@@ -127,12 +127,14 @@ export default function StudyMaterial() {
     try {
       let fileUrl = formData.file_url || editingItem?.file_url || null;
 
-      if (fileInputRef.current?.files?.[0] && supabase) {
+      if (fileInputRef.current?.files?.[0]) {
         const file = fileInputRef.current.files[0];
-        const path = `study_materials/${institute?.id || 'gen'}/${Date.now()}-${file.name}`;
-        const { data: uploadData, error: uploadErr } = await supabase.storage.from('study-materials').upload(path, file);
-        if (!uploadErr && uploadData?.path) {
-          fileUrl = uploadData.path;
+        try {
+          const uploadRes = await uploadStudyMaterialFile(file);
+          fileUrl = uploadRes.file_url;
+        } catch (uploadErr) {
+          toast(uploadErr.message || 'File upload failed.', 'error');
+          return;
         }
       }
 

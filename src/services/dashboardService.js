@@ -1,28 +1,31 @@
-import { supabase } from '../lib/supabase';
-
-const requiredInstitute = (instituteId) => {
-  if (!instituteId) throw new Error('Your account is not linked to an institute. Ask an administrator to add institute_id to your user profile.');
-  if (!supabase) throw new Error('Supabase is not configured.');
-};
-
-const selectRows = async (table, instituteId, order = 'created_at') => {
-  let query = supabase.from(table).select('*').eq('institute_id', instituteId);
-  if (order) query = query.order(order, { ascending: false });
-  const { data, error } = await query;
-  if (error) throw error;
-  return data ?? [];
-};
+/**
+ * dashboardService.js — FastAPI backend edition.
+ */
+import { apiGet } from '../lib/apiClient';
 
 export async function fetchDashboard(instituteId) {
-  requiredInstitute(instituteId);
-  const [students, teachers, attendance, fees, homework, tests, announcements] = await Promise.all([
-    selectRows('students', instituteId),
-    selectRows('teachers', instituteId),
-    selectRows('attendance', instituteId, 'date'),
-    selectRows('fees', instituteId),
-    selectRows('homework', instituteId, 'due_date'),
-    selectRows('tests', instituteId, 'date'),
-    selectRows('announcements', instituteId).catch(() => []),
-  ]);
-  return { students, teachers, attendance, fees, homework, tests, announcements };
+  try {
+    const data = await apiGet('/reports/dashboard');
+    return {
+      students: data?.students || [],
+      teachers: data?.teachers || [],
+      attendance: data?.attendance || [],
+      fees: data?.fees || [],
+      payments: data?.payments || [],
+      homework: data?.homework || [],
+      tests: data?.tests || [],
+      announcements: data?.announcements || [],
+      batches: data?.batches || [],
+      expenses: data?.expenses || [],
+      payroll: data?.payroll || [],
+      enquiries: data?.enquiries || [],
+    };
+  } catch (err) {
+    console.error('fetchDashboard error:', err);
+    return {
+      students: [], teachers: [], attendance: [], fees: [],
+      payments: [], homework: [], tests: [], announcements: [],
+      batches: [], expenses: [], payroll: [], enquiries: []
+    };
+  }
 }

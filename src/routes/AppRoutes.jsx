@@ -1,39 +1,44 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import Dashboard from '../pages/Dashboard/Dashboard';
-import TeacherDashboard from '../pages/TeacherDashboard/TeacherDashboard';
-import StudentDashboard from '../pages/StudentDashboard/StudentDashboard';
 import Landing from '../pages/Landing/Landing';
 import Login from '../pages/Auth/Login';
 import Register from '../pages/Auth/Register';
 import ForgotPassword from '../pages/Auth/ForgotPassword';
-import Admissions from '../pages/Admissions/Admissions';
-import Students from '../pages/Students/Students';
-import AddStudent from '../pages/Students/AddStudent';
-import EditStudent from '../pages/Students/EditStudent';
-import AdminStudentProfile from '../pages/Students/StudentProfile';
-import Teachers from '../pages/Teachers/Teachers';
-import TeacherProfile from '../pages/Teachers/TeacherProfile';
-import Courses from '../pages/Courses/Courses';
-import Branches from '../pages/Branches/Branches';
-import Batches from '../pages/Batches/Batches';
-import Timetable from '../pages/Timetable/Timetable';
-import Attendance from '../pages/Attendance/Attendance';
-import Fees from '../pages/Fees/Fees';
-import Payments from '../pages/Payments/Payments';
-import Finance from '../pages/Finance/Finance';
-import Payroll from '../pages/Payroll/Payroll';
-import Homework from '../pages/Homework/Homework';
-import StudyMaterial from '../pages/StudyMaterial/StudyMaterial';
-import Communication from '../pages/Communication/Communication';
-import Tests from '../pages/Tests/Tests';
-import Results from '../pages/Results/Results';
-import Analytics from '../pages/Analytics/Analytics';
-import Reports from '../pages/Reports/Reports';
-import AI from '../pages/AI/AI';
-import Settings from '../pages/Settings/Settings';
-import StudentAITutor from '../pages/StudentPortal/StudentAITutor';
-import StudentNotifications from '../pages/StudentPortal/StudentNotifications';
-import StudentProfile from '../pages/StudentPortal/StudentProfile';
+
+// Lazy-loaded page modules
+const Dashboard = lazy(() => import('../pages/Dashboard/Dashboard'));
+const TeacherDashboard = lazy(() => import('../pages/TeacherDashboard/TeacherDashboard'));
+const AssignedBatches = lazy(() => import('../pages/TeacherDashboard/AssignedBatches'));
+const StudentDashboard = lazy(() => import('../pages/StudentDashboard/StudentDashboard'));
+const Admissions = lazy(() => import('../pages/Admissions/Admissions'));
+const Students = lazy(() => import('../pages/Students/Students'));
+const AddStudent = lazy(() => import('../pages/Students/AddStudent'));
+const EditStudent = lazy(() => import('../pages/Students/EditStudent'));
+const AdminStudentProfile = lazy(() => import('../pages/Students/StudentProfile'));
+const Teachers = lazy(() => import('../pages/Teachers/Teachers'));
+const TeacherProfile = lazy(() => import('../pages/Teachers/TeacherProfile'));
+const Courses = lazy(() => import('../pages/Courses/Courses'));
+const Branches = lazy(() => import('../pages/Branches/Branches'));
+const Batches = lazy(() => import('../pages/Batches/Batches'));
+const Timetable = lazy(() => import('../pages/Timetable/Timetable'));
+const Attendance = lazy(() => import('../pages/Attendance/Attendance'));
+const Fees = lazy(() => import('../pages/Fees/Fees'));
+const Payments = lazy(() => import('../pages/Payments/Payments'));
+const Finance = lazy(() => import('../pages/Finance/Finance'));
+const Payroll = lazy(() => import('../pages/Payroll/Payroll'));
+const Homework = lazy(() => import('../pages/Homework/Homework'));
+const StudyMaterial = lazy(() => import('../pages/StudyMaterial/StudyMaterial'));
+const Communication = lazy(() => import('../pages/Communication/Communication'));
+const Tests = lazy(() => import('../pages/Tests/Tests'));
+const Results = lazy(() => import('../pages/Results/Results'));
+const Analytics = lazy(() => import('../pages/Analytics/Analytics'));
+const Reports = lazy(() => import('../pages/Reports/Reports'));
+const Settings = lazy(() => import('../pages/Settings/Settings'));
+const AdminManagement = lazy(() => import('../pages/AdminManagement/AdminManagement'));
+const RegisterAdmin = lazy(() => import('../pages/Auth/RegisterAdmin'));
+const StudentNotifications = lazy(() => import('../pages/StudentPortal/StudentNotifications'));
+const StudentProfile = lazy(() => import('../pages/StudentPortal/StudentProfile'));
+
 import ProtectedRoute from './ProtectedRoute';
 import { useAuthContext } from '../contexts/AuthContext';
 import { useInstitute } from '../contexts/InstituteContext';
@@ -345,53 +350,71 @@ function RootRoute() {
   return <Landing />;
 }
 
+function PageLoader() {
+  return (
+    <div className="flex min-h-[400px] w-full items-center justify-center p-6 text-slate-400">
+      <div className="flex items-center gap-3">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+        <span className="text-sm font-medium">Loading module...</span>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<RootRoute />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/" element={<RootRoute />} />
+        <Route path="/login" element={<Login />} />
+        {/* Public institute onboarding: new institute + its first Admin. */}
+        <Route path="/register-admin" element={<RegisterAdmin />} />
+        {/* `/register` stays disabled: student/faculty signup is not public. */}
+        <Route path="/register" element={<Navigate to="/login" replace />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
-      {/* Role-Specific Dashboards */}
-      <Route path="/dashboard" element={<ProtectedRoute role="admin"><Dashboard /></ProtectedRoute>} />
-      <Route path="/teacher" element={<ProtectedRoute role="teacher"><TeacherDashboard /></ProtectedRoute>} />
-      <Route path="/student" element={<ProtectedRoute role="student"><StudentDashboard /></ProtectedRoute>} />
 
-      {/* ERP Modules */}
-      <Route path="/admissions" element={<ProtectedRoute role="admin"><Admissions /></ProtectedRoute>} />
-      <Route path="/students" element={<ProtectedRoute role="admin"><Students /></ProtectedRoute>} />
-      <Route path="/students/add" element={<ProtectedRoute role="admin"><AddStudent /></ProtectedRoute>} />
-      <Route path="/students/edit/:id" element={<ProtectedRoute role="admin"><EditStudent /></ProtectedRoute>} />
-      <Route path="/students/:id" element={<ProtectedRoute role="admin"><AdminStudentProfile /></ProtectedRoute>} />
-      <Route path="/teachers" element={<ProtectedRoute role="admin"><Teachers /></ProtectedRoute>} />
-      <Route path="/teachers/:id" element={<ProtectedRoute role="admin"><TeacherProfile /></ProtectedRoute>} />
-      <Route path="/courses" element={<ProtectedRoute role="admin"><Courses /></ProtectedRoute>} />
-      <Route path="/branches" element={<ProtectedRoute role="admin"><Branches /></ProtectedRoute>} />
+        {/* Role-Specific Dashboards */}
+        <Route path="/dashboard" element={<ProtectedRoute role="admin"><Dashboard /></ProtectedRoute>} />
+        <Route path="/teacher" element={<ProtectedRoute role="teacher"><TeacherDashboard /></ProtectedRoute>} />
+        <Route path="/teacher/batches" element={<ProtectedRoute role="teacher"><AssignedBatches /></ProtectedRoute>} />
+        <Route path="/student" element={<ProtectedRoute role="student"><StudentDashboard /></ProtectedRoute>} />
 
-      {/* Shared Academic & Operational Modules */}
-      <Route path="/batches" element={<ProtectedRoute role="admin"><Batches /></ProtectedRoute>} />
-      <Route path="/timetable" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentTimetable} staffComponent={Timetable} /></ProtectedRoute>} />
-      <Route path="/attendance" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentAttendance} staffComponent={Attendance} /></ProtectedRoute>} />
-      <Route path="/fees" element={<ProtectedRoute allowedRoles={['owner', 'admin', 'student']}><StudentModuleGate studentComponent={StudentFeesView} staffComponent={Fees} /></ProtectedRoute>} />
-      <Route path="/payments" element={<ProtectedRoute role="admin"><Payments /></ProtectedRoute>} />
-      <Route path="/finance" element={<ProtectedRoute role="admin"><Finance /></ProtectedRoute>} />
-      <Route path="/payroll" element={<ProtectedRoute role="admin"><Payroll /></ProtectedRoute>} />
+        {/* ERP Modules */}
+        <Route path="/admissions" element={<ProtectedRoute role="admin"><Admissions /></ProtectedRoute>} />
+        <Route path="/students" element={<ProtectedRoute role="admin"><Students /></ProtectedRoute>} />
+        <Route path="/students/add" element={<ProtectedRoute role="admin"><AddStudent /></ProtectedRoute>} />
+        <Route path="/students/edit/:id" element={<ProtectedRoute role="admin"><EditStudent /></ProtectedRoute>} />
+        <Route path="/students/:id" element={<ProtectedRoute role="admin"><AdminStudentProfile /></ProtectedRoute>} />
+        <Route path="/teachers" element={<ProtectedRoute role="admin"><Teachers /></ProtectedRoute>} />
+        <Route path="/teachers/:id" element={<ProtectedRoute role="admin"><TeacherProfile /></ProtectedRoute>} />
+        <Route path="/courses" element={<ProtectedRoute role="admin"><Courses /></ProtectedRoute>} />
+        <Route path="/branches" element={<ProtectedRoute role="admin"><Branches /></ProtectedRoute>} />
 
-      <Route path="/homework" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentHomeworkView} staffComponent={Homework} /></ProtectedRoute>} />
-      <Route path="/study-material" element={<ProtectedRoute allowedRoles={['owner', 'admin', 'teacher', 'student']}><StudentModuleGate studentComponent={StudentStudyMaterialView} staffComponent={StudyMaterial} /></ProtectedRoute>} />
-      <Route path="/communication" element={<ProtectedRoute allowedRoles={['owner', 'admin', 'teacher', 'student']}><StudentModuleGate studentComponent={StudentAnnouncementsView} staffComponent={Communication} /></ProtectedRoute>} />
-      <Route path="/tests" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentTestsView} staffComponent={Tests} /></ProtectedRoute>} />
-      <Route path="/results" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentResultsView} staffComponent={Results} /></ProtectedRoute>} />
-      <Route path="/analytics" element={<ProtectedRoute role="admin"><Analytics /></ProtectedRoute>} />
-      <Route path="/reports" element={<ProtectedRoute role="admin"><Reports /></ProtectedRoute>} />
-      <Route path="/notifications" element={<ProtectedRoute role="student"><StudentNotifications /></ProtectedRoute>} />
-      <Route path="/ai" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentAITutor} staffComponent={AI} /></ProtectedRoute>} />
-      <Route path="/profile" element={<ProtectedRoute role="student"><StudentProfile /></ProtectedRoute>} />
-      <Route path="/settings" element={<ProtectedRoute role="admin"><Settings /></ProtectedRoute>} />
+        {/* Shared Academic & Operational Modules */}
+        <Route path="/batches" element={<ProtectedRoute role="admin"><Batches /></ProtectedRoute>} />
+        <Route path="/timetable" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentTimetable} staffComponent={Timetable} /></ProtectedRoute>} />
+        <Route path="/attendance" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentAttendance} staffComponent={Attendance} /></ProtectedRoute>} />
+        <Route path="/fees" element={<ProtectedRoute allowedRoles={['owner', 'admin', 'student']}><StudentModuleGate studentComponent={StudentFeesView} staffComponent={Fees} /></ProtectedRoute>} />
+        <Route path="/payments" element={<ProtectedRoute role="admin"><Payments /></ProtectedRoute>} />
+        <Route path="/finance" element={<ProtectedRoute role="admin"><Finance /></ProtectedRoute>} />
+        <Route path="/payroll" element={<ProtectedRoute role="admin"><Payroll /></ProtectedRoute>} />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="/homework" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentHomeworkView} staffComponent={Homework} /></ProtectedRoute>} />
+        <Route path="/study-material" element={<ProtectedRoute allowedRoles={['owner', 'admin', 'teacher', 'student']}><StudentModuleGate studentComponent={StudentStudyMaterialView} staffComponent={StudyMaterial} /></ProtectedRoute>} />
+        <Route path="/communication" element={<ProtectedRoute allowedRoles={['owner', 'admin', 'teacher', 'student']}><StudentModuleGate studentComponent={StudentAnnouncementsView} staffComponent={Communication} /></ProtectedRoute>} />
+        <Route path="/tests" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentTestsView} staffComponent={Tests} /></ProtectedRoute>} />
+        <Route path="/results" element={<ProtectedRoute role="any"><StudentModuleGate studentComponent={StudentResultsView} staffComponent={Results} /></ProtectedRoute>} />
+        <Route path="/analytics" element={<ProtectedRoute role="admin"><Analytics /></ProtectedRoute>} />
+        <Route path="/reports" element={<ProtectedRoute role="admin"><Reports /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute role="student"><StudentNotifications /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute role="student"><StudentProfile /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute role="admin"><Settings /></ProtectedRoute>} />
+        <Route path="/admin-management" element={<ProtectedRoute role="owner"><AdminManagement /></ProtectedRoute>} />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

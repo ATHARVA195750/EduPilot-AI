@@ -19,7 +19,7 @@ export default function StudentProfile() {
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between gap-4"><dt className="text-slate-500">Name</dt><dd className="font-medium text-slate-900 dark:text-white">{student?.full_name || profile?.full_name || '—'}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-slate-500">Student ID</dt><dd className="font-medium text-slate-900 dark:text-white">{student?.student_id_code || '—'}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-slate-500">Batch</dt><dd className="font-medium text-slate-900 dark:text-white">{student?.batch_name || student?.standard || '—'}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-slate-500">Batch</dt><dd className="font-medium text-slate-900 dark:text-white">{student?.batches?.name || 'Unassigned'}</dd></div>
           </dl>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">

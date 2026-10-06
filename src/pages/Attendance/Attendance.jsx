@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import * as XLSX from 'xlsx';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import { useStudents } from '../../hooks/useStudents';
@@ -91,7 +90,8 @@ function Attendance() {
   if (isLoading || loadingStudents) return <Card className="p-6 text-slate-400">Loading attendance…</Card>;
   if (error) return <Card className="p-6 text-rose-300">{error.message}</Card>;
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
+    const XLSX = await import('xlsx');
     const dataRows = records.map((r) => {
       const s = students.find((x) => x.id === r.student_id);
       const rawDate = r.attendance_date ?? r.date ?? date;

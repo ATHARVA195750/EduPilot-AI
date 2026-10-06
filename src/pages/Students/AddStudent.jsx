@@ -4,12 +4,13 @@ import { useForm } from 'react-hook-form';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Card from '../../components/common/Card';
+import Modal from '../../components/common/Modal';
 import { createStudent } from '../../services/studentService';
 import { useCourses } from '../../hooks/useCourses';
 import { useBatches } from '../../hooks/useBatches';
 import { useInstitute } from '../../contexts/InstituteContext';
 import { useToast } from '../../components/common/Toast';
-import { ArrowLeft, User, BookOpen, Users, Phone } from 'lucide-react';
+import { ArrowLeft, User, BookOpen, Users, Phone, Copy, CheckCircle2, ShieldCheck } from 'lucide-react';
 
 export default function AddStudent() {
   const {
@@ -20,7 +21,6 @@ export default function AddStudent() {
     formState: { errors },
   } = useForm({
     defaultValues: {
-      student_id_code: `STU-${Math.floor(10000 + Math.random() * 90000)}`,
       standard: 'Class 10th',
       gender: 'Male',
       admission_date: new Date().toISOString().slice(0, 10),
@@ -31,6 +31,9 @@ export default function AddStudent() {
 
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState(null);
+  const [copiedId, setCopiedId] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
   const navigate = useNavigate();
   const { instituteId } = useInstitute();
   const { toast } = useToast();
@@ -40,7 +43,6 @@ export default function AddStudent() {
 
   const selectedCourseId = watch('course_id');
 
-  // Cascade filter batches for selected course
   const availableBatches = useMemo(() => {
     if (!selectedCourseId) return batches;
     return batches.filter((b) => b.course_id === selectedCourseId || !b.course_id);
@@ -50,7 +52,7 @@ export default function AddStudent() {
     setErrorMessage('');
     setIsSubmitting(true);
     try {
-      await createStudent(
+      const created = await createStudent(
         {
           full_name: data.full_name,
           student_id_code: data.student_id_code,
@@ -71,14 +73,24 @@ export default function AddStudent() {
         instituteId
       );
 
-      toast(`Student "${data.full_name}" registered and enrolled successfully.`);
-      navigate('/students');
+      toast(`Student "${data.full_name}" registered successfully.`);
+
+      if (created?._credentials?.tempPassword) {
+        setCreatedCredentials({
+          identifier: created._credentials.identifier,
+          password: created._credentials.tempPassword,
+          fullName: data.full_name,
+        });
+      } else {
+        navigate('/students');
+      }
     } catch (error) {
       setErrorMessage(error.message || 'Unable to register student.');
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -257,6 +269,84 @@ export default function AddStudent() {
           </div>
         </form>
       </Card>
+
+      {/* One-Time Student Credentials Modal */}
+      <Modal
+        isOpen={Boolean(createdCredentials)}
+        onClose={() => {
+          setCreatedCredentials(null);
+          navigate('/students');
+        }}
+        title="Student Account Provisioned"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <ShieldCheck size={20} className="shrink-0" />
+            <p className="text-xs">
+              Account created successfully for <strong>{createdCredentials?.fullName}</strong>.
+            </p>
+          </div>
+
+          <div className="space-y-3 rounded-2xl bg-slate-950/60 p-4 border border-slate-800">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                Student ID
+              </label>
+              <div className="flex items-center justify-between rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-sm font-mono text-white">
+                <span>{createdCredentials?.identifier}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(createdCredentials?.identifier || '');
+                    setCopiedId(true);
+                    setTimeout(() => setCopiedId(false), 2000);
+                  }}
+                  className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                >
+                  {copiedId ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  <span>{copiedId ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                Temporary Password
+              </label>
+              <div className="flex items-center justify-between rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-sm font-mono text-amber-400 font-bold">
+                <span>{createdCredentials?.password}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(createdCredentials?.password || '');
+                    setCopiedPassword(true);
+                    setTimeout(() => setCopiedPassword(false), 2000);
+                  }}
+                  className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                >
+                  {copiedPassword ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  <span>{copiedPassword ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-400 italic">
+            Save these credentials securely. The temporary password will not be shown again.
+          </p>
+
+          <Button
+            type="button"
+            className="w-full py-2.5"
+            onClick={() => {
+              setCreatedCredentials(null);
+              navigate('/students');
+            }}
+          >
+            Done & Return to Roster
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

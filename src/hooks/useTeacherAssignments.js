@@ -3,6 +3,7 @@ import {
   fetchTeacherAssignments,
   createTeacherAssignment,
   updateTeacherAssignmentStatus,
+  deleteTeacherAssignment,
 } from '../services/teacherAssignmentService';
 import { useInstitute } from '../contexts/InstituteContext';
 
@@ -39,5 +40,11 @@ export function useTeacherAssignments(teacherId = null) {
     return updated;
   };
 
-  return { assignments, loading, refresh: loadData, addAssignment, changeStatus };
+  const removeAssignment = async (id) => {
+    const removed = await deleteTeacherAssignment(id);
+    await loadData();
+    return removed;
+  };
+
+  return { assignments, loading, refresh: loadData, addAssignment, changeStatus, removeAssignment };
 }

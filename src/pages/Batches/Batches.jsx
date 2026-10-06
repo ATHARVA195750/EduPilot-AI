@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useBatches } from '../../hooks/useBatches';
+import { formatBatchStatus } from '../../services/batchService';
 import { useCourses } from '../../hooks/useCourses';
 import { useBranches } from '../../hooks/useBranches';
 import { useStudents } from '../../hooks/useStudents';
@@ -23,6 +24,15 @@ import {
   Eye,
 } from 'lucide-react';
 
+// Single source of truth for the status <select> in both modals. Values stay
+// title-case for display; batchService.normalizeBatchStatus() converts to the
+// lowercase values that batches_status_check actually accepts.
+const BATCH_STATUS_OPTIONS = [
+  { value: 'Active', label: 'Active' },
+  { value: 'Inactive', label: 'Inactive' },
+  { value: 'Completed', label: 'Completed' },
+];
+
 export default function Batches() {
   const { batches, loading, addBatch, editBatch, transferStudent } = useBatches();
   const { courses } = useCourses();
@@ -31,6 +41,9 @@ export default function Batches() {
   const { toast } = useToast();
 
   const [search, setSearch] = useState('');
+  // Values are title-case for the UI; filtering compares lowercased so rows
+  // stored as 'active' (per batches_status_check) match regardless of casing.
+  const [statusFilter, setStatusFilter] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState(null);
@@ -55,16 +68,20 @@ export default function Batches() {
 
   const filteredBatches = useMemo(() => {
     const query = search.toLowerCase().trim();
-    if (!query) return batches;
-    return batches.filter(
-      (b) =>
+    return batches.filter((b) => {
+      const matchesSearch =
+        !query ||
         b.name?.toLowerCase().includes(query) ||
         b.course_name?.toLowerCase().includes(query) ||
         b.branch_name?.toLowerCase().includes(query) ||
         b.teacher_names?.toLowerCase().includes(query) ||
-        b.room_number?.toLowerCase().includes(query)
-    );
-  }, [batches, search]);
+        b.room_number?.toLowerCase().includes(query);
+      const matchesStatus =
+        !statusFilter ||
+        String(b.status ?? 'active').trim().toLowerCase() === statusFilter.trim().toLowerCase();
+      return matchesSearch && matchesStatus;
+    });
+  }, [batches, search, statusFilter]);
 
   const openAddModal = () => {
     setFormData({
@@ -90,7 +107,9 @@ export default function Batches() {
       max_capacity: batch.max_capacity || 40,
       start_time: batch.start_time || '18:00',
       end_time: batch.end_time || '19:30',
-      status: batch.status || 'Active',
+      // Stored values are lowercase ('active'); the <select> options are
+      // title-case, so normalise for display or the control renders blank.
+      status: formatBatchStatus(batch.status),
     });
   };
 
@@ -179,8 +198,23 @@ export default function Batches() {
             className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-white"
           />
         </label>
-        <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-          Showing <span className="font-bold text-slate-900 dark:text-white">{filteredBatches.length}</span> of {batches.length} batches
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            aria-label="Filter by status"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none sm:w-48 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+          >
+            <option value="">All Statuses</option>
+            {BATCH_STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Showing <span className="font-bold text-slate-900 dark:text-white">{filteredBatches.length}</span> of {batches.length} batches
+          </div>
         </div>
       </div>
 
@@ -188,10 +222,10 @@ export default function Batches() {
       {filteredBatches.length === 0 ? (
         <EmptyState
           icon={Users}
-          title={search ? 'No matching batches found' : 'No Active Batches'}
+          title={search || statusFilter ? 'No matching batches found' : 'No Active Batches'}
           description={
-            search
-              ? 'Try refining your search terms.'
+            search || statusFilter
+              ? 'Try refining your search or status filter.'
               : 'Create your first batch to allocate enrolled students and manage classroom schedules.'
           }
         />
@@ -211,12 +245,14 @@ export default function Batches() {
                     </span>
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                        batch.status === 'Inactive'
+                        formatBatchStatus(batch.status) === 'Inactive'
                           ? 'bg-rose-500/10 text-rose-500'
-                          : 'bg-emerald-500/10 text-emerald-500'
+                          : formatBatchStatus(batch.status) === 'Completed'
+                            ? 'bg-slate-500/10 text-slate-500 dark:text-slate-300'
+                            : 'bg-emerald-500/10 text-emerald-500'
                       }`}
                     >
-                      {batch.status || 'Active'}
+                      {formatBatchStatus(batch.status)}
                     </span>
                   </div>
 
@@ -350,8 +386,11 @@ export default function Batches() {
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               >
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
+                {BATCH_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
             <Input
@@ -445,8 +484,11 @@ export default function Batches() {
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               >
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
+                {BATCH_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
             <Input
@@ -483,8 +525,14 @@ export default function Batches() {
                 <span className="text-xs font-semibold uppercase text-indigo-600 dark:text-indigo-400">
                   {viewingBatch.branch_name || 'Main Campus'}
                 </span>
-                <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-500">
-                  {viewingBatch.status || 'Active'}
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  formatBatchStatus(viewingBatch.status) === 'Inactive'
+                    ? 'bg-rose-500/10 text-rose-500'
+                    : formatBatchStatus(viewingBatch.status) === 'Completed'
+                      ? 'bg-slate-500/10 text-slate-500 dark:text-slate-300'
+                      : 'bg-emerald-500/10 text-emerald-500'
+                }`}>
+                  {formatBatchStatus(viewingBatch.status)}
                 </span>
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">{viewingBatch.name}</h3>

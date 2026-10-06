@@ -11,7 +11,7 @@ import { useToast } from '../../components/common/Toast';
 import { BookOpen, Plus, Tag, Search, Edit2, Trash2, Layers, CheckCircle, XCircle } from 'lucide-react';
 
 export default function Courses() {
-  const { courses, loading, addCourse, editCourse } = useCourses();
+  const { courses, loading, refresh, addCourse, editCourse } = useCourses();
   const { toast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -422,14 +422,18 @@ export default function Courses() {
       {managingSubjectsCourse && (
         <SubjectManagerModal
           course={managingSubjectsCourse}
-          onClose={() => setManagingSubjectsCourse(null)}
+          onClose={() => {
+            setManagingSubjectsCourse(null);
+            refresh();
+          }}
+          onSubjectsUpdated={refresh}
         />
       )}
     </div>
   );
 }
 
-function SubjectManagerModal({ course, onClose }) {
+function SubjectManagerModal({ course, onClose, onSubjectsUpdated }) {
   const { subjects, loading, addSubject, removeSubject } = useSubjects(course.id);
   const { toast } = useToast();
 
@@ -449,6 +453,7 @@ function SubjectManagerModal({ course, onClose }) {
       });
       toast(`Subject "${newSubject.name}" added to ${course.name}.`);
       setNewSubject({ name: '', code: '', description: '' });
+      if (typeof onSubjectsUpdated === 'function') await onSubjectsUpdated();
     } catch (err) {
       toast(err.message || 'Failed to add subject.', 'error');
     } finally {
@@ -461,6 +466,7 @@ function SubjectManagerModal({ course, onClose }) {
     try {
       await removeSubject(id);
       toast(`Subject "${name}" deleted.`);
+      if (typeof onSubjectsUpdated === 'function') await onSubjectsUpdated();
     } catch (err) {
       toast(err.message || 'Failed to delete subject.', 'error');
     }

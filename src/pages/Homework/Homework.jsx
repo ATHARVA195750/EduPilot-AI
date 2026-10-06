@@ -15,7 +15,8 @@ import { useSubjects } from '../../hooks/useSubjects';
 import { useTeachers } from '../../hooks/useTeachers';
 import { useInstitute } from '../../contexts/InstituteContext';
 import { useToast } from '../../components/common/Toast';
-import { supabase } from '../../lib/supabase';
+import { uploadHomeworkFile } from '../../services/homeworkService';
+import { API_BASE_URL } from '../../lib/apiClient';
 import {
   BookOpen,
   Plus,
@@ -92,19 +93,19 @@ function Homework() {
   };
 
   const handleDownload = async (fileUrl) => {
-    if (!fileUrl || !supabase) return;
+    if (!fileUrl) return;
     try {
       if (fileUrl.startsWith('http')) {
         window.open(fileUrl, '_blank');
         return;
       }
-      const { data, error: err } = await supabase.storage.from('homework-files').createSignedUrl(fileUrl, 3600);
-      if (err) throw err;
-      if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
-      }
+      // Backend-served relative path (e.g. /uploads/homework/abc.pdf)
+      const absolute = fileUrl.startsWith('/')
+        ? `${API_BASE_URL.replace(/\/api\/v1$/, '')}${fileUrl}`
+        : fileUrl;
+      window.open(absolute, '_blank');
     } catch (e) {
-      toast('Unable to generate attachment download link.', 'error');
+      toast('Unable to open attachment download link.', 'error');
     }
   };
 
@@ -113,12 +114,11 @@ function Homework() {
     try {
       let fileUrl = editingItem?.file_url || null;
 
-      if (fileInputRef.current?.files?.[0] && supabase) {
+      if (fileInputRef.current?.files?.[0]) {
         const file = fileInputRef.current.files[0];
-        const path = `${institute?.id || 'gen'}/${Date.now()}-${file.name}`;
-        const { data: uploadData, error: uploadErr } = await supabase.storage.from('homework-files').upload(path, file);
-        if (!uploadErr && uploadData?.path) {
-          fileUrl = uploadData.path;
+        const uploaded = await uploadHomeworkFile(file);
+        if (uploaded?.file_url) {
+          fileUrl = uploaded.file_url;
         }
       }
 

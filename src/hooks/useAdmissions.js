@@ -34,8 +34,11 @@ export function useAdmissions() {
   };
 
   const changeStatus = async (id, status, notes) => {
+    // updateEnquiry throws on DB error, so setEnquiries is only reached on success.
+    // State is driven by the DB-returned record, not the caller-supplied values,
+    // so local state always matches what was actually persisted.
     const updated = await updateEnquiry(id, instituteId, { status, counselling_notes: notes });
-    setEnquiries(prev => prev.map(item => item.id === id ? { ...item, status, counselling_notes: notes || item.counselling_notes } : item));
+    setEnquiries(prev => prev.map(item => item.id === id ? updated : item));
     return updated;
   };
 
