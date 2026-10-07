@@ -8,10 +8,9 @@ A React + Vite educational management dashboard scaffold with Tailwind support.
    ```bash
    npm install
    ```
-2. Create a local `.env` file with your Supabase credentials:
+2. Create a local `.env` file with your backend API configuration:
    ```bash
-   VITE_SUPABASE_URL=https://iunocsnmqptjxfsemhwf.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJ_REDACTED_JWT
+   VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
    ```
 3. Start development server:
    ```bash

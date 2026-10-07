@@ -1,5 +1,39 @@
+# Dependencies
 node_modules/
+.venv/
+
+# Build / dist (generated, not versioned)
 dist/
+build/
+
+# Environment files (real secrets never committed)
+backend/.env
 .env
+.env.*
+!.env.example
+!.env.development
+!backend/.env.example
+
+# Python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Test / QA generated output
+test-results/
+playwright-report/
+coverage/
+
+# Logs and local databases
+*.log
+logs/
+*.db
+*.sqlite
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# IDE / editor
 .vscode/
+.idea/
