@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.db.session import engine, Base
@@ -14,12 +16,16 @@ app = FastAPI(
 )
 
 # CORS setup for Vite React frontend
+# Production frontend origin comes from FRONTEND_URL env var (set on Render
+# backend service). Localhost origins are always retained for development.
+_frontend_url = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+if _frontend_url and _frontend_url not in origins:
+    origins.append(_frontend_url)
 
-import os
 from fastapi.staticfiles import StaticFiles
 
 app.add_middleware(

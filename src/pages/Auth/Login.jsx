@@ -23,17 +23,23 @@ function Login() {
   const { isAuthenticated, loading: authLoading, login } = useAuthContext();
   const { role, loading: instituteLoading } = useInstitute();
 
-  // Deterministic preflight (Phase 17): verify the API base is reachable
+  // Deterministic preflight (Phase 17): verify the API backend is reachable
   // BEFORE the user submits credentials. Never fakes auth — only reports
   // reachability so a dead backend shows an actionable message instead of
   // a generic "Failed to fetch".
+  // NOTE: backend exposes health at the ROOT (GET /health in main.py),
+  // not under /api/v1, so derive the backend origin from API_BASE_URL by
+  // stripping a trailing /api/v1 suffix. Works for local dev
+  // (http://127.0.0.1:8000/api/v1 -> http://127.0.0.1:8000/health) and
+  // production (https://<backend>.onrender.com/api/v1 -> https://<backend>.onrender.com/health).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), 5000);
-        const res = await fetch(`${API_BASE_URL}/health`, { signal: ctrl.signal });
+        const apiRoot = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+        const res = await fetch(`${apiRoot}/health`, { signal: ctrl.signal });
         clearTimeout(t);
         if (!cancelled) setApiAvailable(res.ok);
       } catch {
