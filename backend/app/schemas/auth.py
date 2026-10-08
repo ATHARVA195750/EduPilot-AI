@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, Any
+from typing import ClassVar, Optional, Any
 
 class Token(BaseModel):
     access_token: str
@@ -26,6 +26,10 @@ class RegisterAdminRequest(BaseModel):
     address: Optional[str] = None
     instituteAddress: Optional[str] = None
     code: Optional[str] = None
+    # SaaS plan selected on the pricing section (?plan=key). Optional for
+    # backwards compatibility; the backend validates and defaults to starter.
+    plan: Optional[str] = None
+    subscription_plan: Optional[str] = None
 
     def get_institute_name(self) -> str:
         name = self.institute_name or self.instituteName
@@ -47,6 +51,12 @@ class RegisterAdminRequest(BaseModel):
 
     def get_address(self) -> Optional[str]:
         return self.address or self.instituteAddress
+
+    VALID_PLANS: ClassVar[tuple] = ("starter", "growth", "professional", "enterprise")
+
+    def get_plan(self) -> str:
+        raw = (self.plan or self.subscription_plan or "starter").strip().lower()
+        return raw if raw in self.VALID_PLANS else "starter"
 
 class UserProfileResponse(BaseModel):
     id: str

@@ -5,7 +5,8 @@ import Footer from './Footer';
 import PageTransition from '../common/PageTransition';
 import GlobalCopilot from '../ai/GlobalCopilot';
 
-const standalonePaths = ['/', '/login', '/register', '/forgot-password'];
+// Public SaaS pages render without the authenticated app shell (sidebar/navbar).
+const standalonePaths = ['/', '/login', '/register', '/register-admin', '/forgot-password'];
 
 function Layout({ children }) {
   const location = useLocation();

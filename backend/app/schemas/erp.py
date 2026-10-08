@@ -154,7 +154,7 @@ class AnnouncementCreate(BaseModel):
     batch_id: Optional[str] = None
     priority: Optional[str] = "Normal"
 
-# Public Enquiry
+# Public Enquiry (tenant admission enquiry — always institute-scoped)
 class PublicEnquiryCreate(BaseModel):
     student_name: str
     phone: str
@@ -162,6 +162,12 @@ class PublicEnquiryCreate(BaseModel):
     email: Optional[str] = None
     course_interested: Optional[str] = None
     counselling_notes: Optional[str] = None
+
+# SaaS Contact (neutral EduPilot demo/sales request — never tenant-scoped)
+class SaaSContactCreate(BaseModel):
+    name: str
+    phone: str
+    message: Optional[str] = None
 
 class StudyMaterialCreate(BaseModel):
     title: str

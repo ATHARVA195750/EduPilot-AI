@@ -3,11 +3,37 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.deps import get_current_user, CurrentUserContext
-from app.models.all_models import Institute, Branch, Enquiry
-from app.schemas.erp import InstituteCreate, BranchCreate, PublicEnquiryCreate
+from app.models.all_models import Institute, Branch, Enquiry, SaaSContactRequest
+from app.schemas.erp import InstituteCreate, BranchCreate, PublicEnquiryCreate, SaaSContactCreate
 import uuid
 
 router = APIRouter(prefix="/institutes", tags=["Institutes"])
+
+@router.post("/contact")
+def submit_saas_contact(payload: SaaSContactCreate, db: Session = Depends(get_db)):
+    """Neutral EduPilot SaaS contact/demo request.
+
+    Stored in `saas_contact_requests` with NO institute association, so the
+    public landing page never routes SaaS enquiries into the oldest tenant's
+    admission pipeline. Tenant admission enquiries keep using
+    POST /institutes/public/enquiry.
+    """
+    if not payload.name.strip() or not payload.phone.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide your name and phone number."
+        )
+    request = SaaSContactRequest(
+        id=str(uuid.uuid4()),
+        name=payload.name.strip(),
+        phone=payload.phone.strip(),
+        message=(payload.message or None),
+        status="NEW",
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return {"id": request.id, "message": "Thank you! The EduPilot team will contact you shortly."}
 
 @router.get("/public")
 def get_public_institute(db: Session = Depends(get_db)):

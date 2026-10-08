@@ -21,3 +21,17 @@ export async function submitPublicEnquiry({ name, phone, message }) {
   return apiPost('/institutes/public/enquiry', payload, false);
 }
 
+/**
+ * submitSaaSContact — neutral EduPilot demo/sales request.
+ * Stored server-side with NO tenant association (saas_contact_requests),
+ * so the public landing page never routes SaaS enquiries into any
+ * institute's admission pipeline.
+ */
+export async function submitSaaSContact({ name, phone, message }) {
+  return apiPost(
+    '/institutes/contact',
+    { name, phone, message: message || null },
+    false
+  );
+}
+

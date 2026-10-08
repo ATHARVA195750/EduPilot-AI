@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timedelta
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -95,7 +96,11 @@ def register_admin(payload: RegisterAdminRequest, db: Session = Depends(get_db))
             detail="An account with this email address already exists."
         )
 
-    # 1. Create Institute
+    # 1. Create Institute with SaaS plan + 7-day trial window.
+    # No payment or subscription enforcement — display/architecture only.
+    plan_key = payload.get_plan()
+    trial_start = datetime.utcnow()
+    trial_end = trial_start + timedelta(days=7)
     inst_code = payload.code or f"{req_inst_name[:3].upper()}-{uuid.uuid4().hex[:6].upper()}"
     institute = Institute(
         id=str(uuid.uuid4()),
@@ -103,7 +108,11 @@ def register_admin(payload: RegisterAdminRequest, db: Session = Depends(get_db))
         code=inst_code,
         phone=req_phone,
         email=req_email,
-        address=req_address
+        address=req_address,
+        subscription_plan=plan_key,
+        subscription_status="trialing",
+        trial_started_at=trial_start,
+        trial_ends_at=trial_end,
     )
     db.add(institute)
 
@@ -139,6 +148,10 @@ def register_admin(payload: RegisterAdminRequest, db: Session = Depends(get_db))
         "role": profile.role,
         "institute_id": profile.institute_id,
         "status": profile.status,
+        "subscription_plan": institute.subscription_plan,
+        "subscription_status": institute.subscription_status,
+        "trial_started_at": institute.trial_started_at.isoformat() if institute.trial_started_at else None,
+        "trial_ends_at": institute.trial_ends_at.isoformat() if institute.trial_ends_at else None,
     }
 
     return Token(access_token=access_token, token_type="bearer", user=user_dict)

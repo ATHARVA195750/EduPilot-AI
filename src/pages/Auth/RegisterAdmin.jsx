@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { getPlanByKey, TRIAL_LABEL } from '../../data/plans';
 import {
   GraduationCap,
   AlertCircle,
@@ -52,6 +53,10 @@ function RegisterAdmin() {
   const [errorMessage, setErrorMessage] = useState('');
   const [success, setSuccess] = useState(null);
   const navigate = useNavigate();
+  // SaaS plan chosen on the pricing section (e.g. /register-admin?plan=growth).
+  // Display-only here; the backend validates the key and starts the trial.
+  const [searchParams] = useSearchParams();
+  const selectedPlan = getPlanByKey(searchParams.get('plan'));
   const { isAuthenticated, loading: authLoading } = useAuthContext();
   const { loading: instituteLoading } = useInstitute();
 
@@ -77,7 +82,7 @@ function RegisterAdmin() {
     if (isSubmitting || success) return;
     setErrorMessage('');
     try {
-      setSuccess(await registerInstitute(data));
+      setSuccess(await registerInstitute({ ...data, plan: selectedPlan ? selectedPlan.key : undefined }));
       reset();
     } catch (error) {
       setErrorMessage(error.message || 'Registration failed. Please try again.');
@@ -100,6 +105,13 @@ function RegisterAdmin() {
           <p className="text-sm text-slate-400">
             Register a new coaching institute and create its first Admin account.
           </p>
+          {selectedPlan && (
+            <div className="mx-auto mt-4 max-w-md rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-xs text-blue-300">
+              <span className="font-bold text-blue-200">{selectedPlan.name} plan</span>
+              <span className="text-blue-300/70"> · {selectedPlan.userLimit}</span>
+              <span className="ml-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 px-2 py-0.5 font-semibold text-emerald-300">{TRIAL_LABEL} included</span>
+            </div>
+          )}
         </div>
 
         <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-8 shadow-2xl shadow-black/60">
@@ -272,8 +284,7 @@ function RegisterAdmin() {
               </Button>
 
               <p className="mt-4 text-center text-xs text-slate-500">
-                Your institute and first Admin account are created in one step. No subscription or
-                payment is required.
+                Your institute and first Admin account are created in one step{selectedPlan ? ` on the ${selectedPlan.name} plan` : ''} with a {TRIAL_LABEL}. No payment is required.
               </p>
             </form>
           )}

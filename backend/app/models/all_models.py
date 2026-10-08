@@ -23,6 +23,12 @@ class Institute(Base):
     email = Column(String(100), nullable=True)
     website = Column(String(100), nullable=True)
     gstin = Column(String(50), nullable=True)
+    # SaaS subscription (UI/product architecture; no payment enforcement).
+    # Plan key mirrors frontend src/data/plans.js: starter|growth|professional|enterprise.
+    subscription_plan = Column(String(50), nullable=False, default="starter", server_default="starter")
+    subscription_status = Column(String(50), nullable=False, default="trialing", server_default="trialing")
+    trial_started_at = Column(DateTime, nullable=True)
+    trial_ends_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -206,6 +212,23 @@ class Enquiry(Base):
     follow_up_date = Column(Date, nullable=True)
     counselling_notes = Column(Text, nullable=True)
     assigned_staff = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SaaSContactRequest(Base):
+    """Neutral EduPilot SaaS contact/demo request.
+
+    Deliberately NOT linked to any tenant institute: the public landing page
+    must never silently target the oldest tenant's enquiries table. Tenant
+    admission enquiries continue to live in `enquiries` (per-institute).
+    """
+    __tablename__ = "saas_contact_requests"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    name = Column(String(255), nullable=False)
+    phone = Column(String(50), nullable=False)
+    message = Column(Text, nullable=True)
+    status = Column(String(50), default="NEW")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
