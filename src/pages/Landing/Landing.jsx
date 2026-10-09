@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { GraduationCap, BookOpen, Users, Trophy, CheckCircle2, Send, Sparkles, ArrowRight, Clock, CalendarDays, Wallet, BarChart3, Bot, Zap, MonitorSmartphone, Smartphone, Tablet, Monitor, UserPlus, Settings2, LineChart } from 'lucide-react';
+import { Award, GraduationCap, BookOpen, Users, Trophy, CheckCircle2, Send, Sparkles, ArrowRight, Clock, CalendarDays, Wallet, BarChart3, Bot, Zap, MonitorSmartphone, Smartphone, Tablet, Monitor, UserPlus, Settings2, LineChart } from 'lucide-react';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import { useToast } from '../../components/common/Toast';
